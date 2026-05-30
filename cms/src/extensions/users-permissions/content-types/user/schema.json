@@ -1,0 +1,89 @@
+{
+  "kind": "collectionType",
+  "collectionName": "up_users",
+  "info": {
+    "name": "user",
+    "description": "",
+    "singularName": "user",
+    "pluralName": "users",
+    "displayName": "User"
+  },
+  "options": {
+    "draftAndPublish": false,
+    "timestamps": true
+  },
+  "attributes": {
+    "username": {
+      "type": "string",
+      "minLength": 3,
+      "unique": true,
+      "configurable": false,
+      "required": true
+    },
+    "email": {
+      "type": "email",
+      "minLength": 6,
+      "configurable": false,
+      "required": true
+    },
+    "provider": {
+      "type": "string",
+      "configurable": false
+    },
+    "password": {
+      "type": "password",
+      "minLength": 6,
+      "configurable": false,
+      "private": true
+    },
+    "resetPasswordToken": {
+      "type": "string",
+      "configurable": false,
+      "private": true
+    },
+    "confirmationToken": {
+      "type": "string",
+      "configurable": false,
+      "private": true
+    },
+    "confirmed": {
+      "type": "boolean",
+      "default": false,
+      "configurable": false
+    },
+    "blocked": {
+      "type": "boolean",
+      "default": false,
+      "configurable": false
+    },
+    "role": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "plugin::users-permissions.role",
+      "inversedBy": "users",
+      "configurable": false
+    },
+
+    "displayName": { "type": "string" },
+    "team": { "type": "string", "default": "Astro" },
+    "teamRole": {
+      "type": "enumeration",
+      "enum": ["member", "pm"],
+      "default": "member"
+    },
+    "xp": { "type": "integer", "default": 100, "min": 0 },
+    "level": { "type": "integer", "default": 1, "min": 1 },
+    "xpToNextLevel": { "type": "integer", "default": 250, "min": 1 },
+    "streak": { "type": "integer", "default": 0, "min": 0 },
+    "challengesClosed": { "type": "integer", "default": 0, "min": 0 },
+    "badgesCount": { "type": "integer", "default": 0, "min": 0 },
+    "teamCupPlace": { "type": "integer", "default": 0, "min": 0 },
+    "teamCupCurrent": { "type": "integer", "default": 0, "min": 0 },
+    "teamCupTotal": { "type": "integer", "default": 10000, "min": 1 },
+    "completedDailyQuests": {
+      "type": "relation",
+      "relation": "manyToMany",
+      "target": "api::daily-quest.daily-quest"
+    }
+  }
+}

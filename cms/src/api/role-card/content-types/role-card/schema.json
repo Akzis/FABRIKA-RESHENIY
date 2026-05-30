@@ -1,0 +1,25 @@
+{
+  "kind": "collectionType",
+  "collectionName": "role_cards",
+  "info": {
+    "singularName": "role-card",
+    "pluralName": "role-cards",
+    "displayName": "Role card",
+    "description": "Карточки ролей платформы"
+  },
+  "options": { "draftAndPublish": true },
+  "attributes": {
+    "order": { "type": "integer", "default": 1 },
+    "key": {
+      "type": "enumeration",
+      "enum": ["member", "pm"],
+      "required": true,
+      "unique": true
+    },
+    "tag": { "type": "string", "required": true },
+    "title": { "type": "string", "required": true },
+    "description": { "type": "text", "required": true },
+    "image": { "type": "media", "multiple": false, "allowedTypes": ["images"] },
+    "bullets": { "type": "json" }
+  }
+}

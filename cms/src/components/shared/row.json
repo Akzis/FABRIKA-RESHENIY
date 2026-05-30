@@ -1,0 +1,12 @@
+{
+  "collectionName": "components_shared_rows",
+  "info": {
+    "displayName": "Row",
+    "description": "Пара ярлык-значение"
+  },
+  "options": {},
+  "attributes": {
+    "label": { "type": "string", "required": true },
+    "value": { "type": "string", "required": true }
+  }
+}

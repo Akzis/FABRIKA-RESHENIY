@@ -1,0 +1,23 @@
+{
+  "kind": "collectionType",
+  "collectionName": "badges",
+  "info": {
+    "singularName": "badge",
+    "pluralName": "badges",
+    "displayName": "Badge",
+    "description": "Бейджи коллекции"
+  },
+  "options": { "draftAndPublish": true },
+  "attributes": {
+    "order": { "type": "integer", "default": 1 },
+    "symbol": { "type": "string", "required": true },
+    "label": { "type": "string", "required": true },
+    "accent": {
+      "type": "enumeration",
+      "enum": ["cyan", "mint", "purple"],
+      "default": "cyan"
+    },
+    "got": { "type": "boolean", "default": false },
+    "locked": { "type": "boolean", "default": false }
+  }
+}

@@ -1,0 +1,34 @@
+{
+  "kind": "collectionType",
+  "collectionName": "challenge_levels",
+  "info": {
+    "singularName": "challenge-level",
+    "pluralName": "challenge-levels",
+    "displayName": "Challenge level",
+    "description": "Уровни сложности челленджей"
+  },
+  "options": { "draftAndPublish": true },
+  "attributes": {
+    "order": { "type": "integer", "required": true, "default": 1 },
+    "key": {
+      "type": "enumeration",
+      "enum": ["lite", "med", "hard"],
+      "required": true,
+      "unique": true
+    },
+    "tag": { "type": "string", "required": true },
+    "title": { "type": "string", "required": true },
+    "accent": {
+      "type": "enumeration",
+      "enum": ["cyan", "mint", "purple"],
+      "default": "cyan"
+    },
+    "baseXp": { "type": "integer", "required": true, "default": 50 },
+    "image": { "type": "media", "multiple": false, "allowedTypes": ["images"] },
+    "rows": {
+      "type": "component",
+      "repeatable": true,
+      "component": "shared.row"
+    }
+  }
+}

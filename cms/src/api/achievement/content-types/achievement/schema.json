@@ -1,0 +1,23 @@
+{
+  "kind": "collectionType",
+  "collectionName": "achievements",
+  "info": {
+    "singularName": "achievement",
+    "pluralName": "achievements",
+    "displayName": "Achievement",
+    "description": "Достижения"
+  },
+  "options": { "draftAndPublish": true },
+  "attributes": {
+    "order": { "type": "integer", "default": 1 },
+    "icon": { "type": "string", "required": true },
+    "title": { "type": "string", "required": true },
+    "text": { "type": "text", "required": true },
+    "gain": { "type": "string", "required": true },
+    "accent": {
+      "type": "enumeration",
+      "enum": ["cyan", "mint", "purple"],
+      "default": "cyan"
+    }
+  }
+}
