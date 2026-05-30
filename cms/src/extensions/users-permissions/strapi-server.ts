@@ -17,7 +17,7 @@ export default (plugin: any) => {
         populate: { completedDailyQuests: true },
         fields: [
           'id', 'username', 'email', 'confirmed', 'blocked',
-          'displayName', 'team', 'teamRole',
+          'displayName', 'team', 'teamRole', 'profileActivated',
           'xp', 'level', 'xpToNextLevel',
           'streak', 'challengesClosed', 'badgesCount',
           'teamCupPlace', 'teamCupCurrent', 'teamCupTotal',
@@ -34,13 +34,16 @@ export default (plugin: any) => {
     const userId = ctx.state.user?.id
     if (!userId) return ctx.unauthorized('not logged in')
 
-    const role = ctx.request.body?.role
+    const { role, teamName } = ctx.request.body ?? {}
     if (role !== 'member' && role !== 'pm') {
       return ctx.badRequest('role must be "member" or "pm"')
     }
 
+    const data: Record<string, unknown> = { teamRole: role }
+    if (role === 'pm' && teamName) data.team = String(teamName).trim()
+
     await strapi.entityService.update(
-      'plugin::users-permissions.user', userId, { data: { teamRole: role } },
+      'plugin::users-permissions.user', userId, { data },
     )
 
     ctx.body = { ok: true, teamRole: role }

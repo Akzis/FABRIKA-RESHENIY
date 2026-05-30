@@ -71,7 +71,7 @@
       "enum": ["member", "pm"],
       "default": "member"
     },
-    "xp": { "type": "integer", "default": 100, "min": 0 },
+    "xp": { "type": "integer", "default": 0, "min": 0 },
     "level": { "type": "integer", "default": 1, "min": 1 },
     "xpToNextLevel": { "type": "integer", "default": 250, "min": 1 },
     "streak": { "type": "integer", "default": 0, "min": 0 },
@@ -84,6 +84,7 @@
       "type": "relation",
       "relation": "manyToMany",
       "target": "api::daily-quest.daily-quest"
-    }
+    },
+    "profileActivated": { "type": "boolean", "default": false }
   }
 }

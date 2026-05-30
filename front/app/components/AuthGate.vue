@@ -13,6 +13,7 @@ const role = ref<Role>('member')
 const username = ref('')
 const email = ref('')
 const password = ref('')
+const teamName = ref('')
 const error = ref<string | null>(null)
 const submitting = ref(false)
 
@@ -39,6 +40,10 @@ const submit = async () => {
     error.value = 'Заполни логин и email'
     return
   }
+  if (!isLogin.value && role.value === 'pm' && !teamName.value.trim()) {
+    error.value = 'Введи название команды'
+    return
+  }
 
   submitting.value = true
   try {
@@ -57,7 +62,7 @@ const submit = async () => {
         try {
           await $fetch(`${strapiUrl}/api/users/me/role`, {
             method: 'POST',
-            body: { role: role.value },
+            body: { role: role.value, teamName: teamName.value.trim() || undefined },
             headers: { Authorization: `Bearer ${token}` },
           })
           await fetchUser() // refresh useStrapiUser() with the new teamRole
@@ -168,6 +173,20 @@ const switchMode = (m: Mode) => {
               placeholder="ivanov@team.ru"
               class="w-full py-3.5 px-4 bg-bg border border-line-strong rounded-[10px] text-ink text-[15px] outline-none transition-colors duration-150 focus:border-cyan-brand"
             />
+          </div>
+
+          <div v-if="!isLogin && role === 'pm'" class="mb-[18px]">
+            <label class="block font-mono text-[10px] tracking-[0.14em] text-ink-3 uppercase mb-2">Название команды</label>
+            <input
+              v-model="teamName"
+              type="text"
+              autocomplete="off"
+              placeholder="Команда Альфа"
+              class="w-full py-3.5 px-4 bg-bg border border-line-strong rounded-[10px] text-ink text-[15px] outline-none transition-colors duration-150 focus:border-cyan-brand"
+            />
+            <p class="mt-1.5 font-mono text-[10px] tracking-[0.06em] text-ink-3">
+              Профиль будет активирован администратором
+            </p>
           </div>
 
           <div class="mb-[18px]">

@@ -16,4 +16,5 @@ export interface UserProfile {
   teamCupCurrent?: number | null
   teamCupTotal?: number | null
   completedDailyQuests?: { id: number; documentId?: string }[] | null
+  profileActivated?: boolean | null
 }

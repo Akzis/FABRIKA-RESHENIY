@@ -163,9 +163,8 @@ export const useStrapiLanding = async () => {
   const media = (url: unknown, fallback: string): string =>
     typeof url === 'string' && url.length > 0 ? (mediaFn(url) as string) : fallback
 
-  const { find, findOne } = useStrapi()
+  const { find } = useStrapi()
 
-  type One<T> = { data: T | null }
   type Many<T> = { data: T[] }
 
   const safe = async <T,>(fn: () => Promise<T>): Promise<T | null> => {
@@ -197,8 +196,7 @@ export const useStrapiLanding = async () => {
       headers: token ? { Authorization: `Bearer ${token}` } : {},
     })
 
-  const [hero, steps, levels, badges, achievements, daily, topMembers, roles] = await Promise.all([
-    safe(() => findOne<One<any>>('hero', { populate: ['stats'] })),
+  const [steps, levels, badges, achievements, daily, topMembers, roles] = await Promise.all([
     safe(() => find<Many<any>>('how-steps', { populate: ['icon'], sort: 'order:asc' })),
     safe(() => find<Many<any>>('challenge-levels', { populate: ['rows', 'image'], sort: 'order:asc' })),
     safe(() => find<Many<any>>('badges', { sort: 'order:asc' })),
@@ -210,11 +208,7 @@ export const useStrapiLanding = async () => {
 
   const out: Partial<Parameters<typeof store.hydrate>[0]> = { source: 'defaults' }
 
-  if (hero?.data?.stats?.length) {
-    out.heroStats = hero.data.stats.map((s: any) => ({
-      value: s.value, label: s.label, accent: accentFor(s.accent),
-    }))
-  }
+  // Hero text + stats are hardcoded in AppHero.vue / landingDefaults — no CMS fetch.
 
   if (steps?.data?.length) {
     out.howSteps = steps.data.map((s: any) => ({

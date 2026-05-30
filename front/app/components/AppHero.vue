@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import { computed } from 'vue'
+import type { UserProfile } from '~/types/user'
+
 const { heroStats } = useLandingData()
 
 const accentMap: Record<string, string> = {
@@ -6,6 +9,30 @@ const accentMap: Record<string, string> = {
   mint: 'var(--color-mint-brand)',
   purple: 'var(--color-purple-brand)',
 }
+
+// ── live profile card (top-right scene) ──────────────────────────────────
+const user = useStrapiUser() as unknown as { value: UserProfile | null }
+const u = computed(() => user.value)
+
+const MAX_LEVEL = 25
+
+const fmt = (n: number) => n.toLocaleString('ru-RU').replace(/,/g, ' ')
+
+const lvl       = computed(() => u.value?.level ?? 1)
+const xp        = computed(() => u.value?.xp ?? 0)
+const xpToNext  = computed(() => Math.max(u.value?.xpToNextLevel ?? 100, 1))
+const xpPercent = computed(() =>
+  Math.min(100, Math.round((xp.value / (xp.value + xpToNext.value)) * 100)),
+)
+
+// No rank-name field in the DB — derive a title from the level tier.
+const rankName = computed(() => {
+  const l = lvl.value
+  if (l >= 20) return 'Архитектор'
+  if (l >= 12) return 'Инженер'
+  if (l >= 6) return 'Разработчик'
+  return 'Новичок'
+})
 
 useHeroEntrance()
 useBarFill('.hero-scene-bar', { duration: 1.6 })
@@ -71,15 +98,15 @@ useBarFill('.hero-scene-bar', { duration: 1.6 })
         <div class="scene-xp absolute right-5 bottom-5 z-[3] w-[280px] p-[18px] border border-line-strong rounded-[14px] backdrop-blur-md" style="background: var(--color-panel-bg)">
           <div class="flex justify-between items-center font-mono text-[11px] tracking-[0.08em] text-ink-3 uppercase mb-2.5">
             <span>Текущий уровень</span>
-            <span>14 / 25</span>
+            <span>{{ lvl }} / {{ MAX_LEVEL }}</span>
           </div>
-          <div class="font-pix text-[22px] text-cyan-brand mb-3">LVL 14 · Инженер</div>
+          <div class="font-pix text-[22px] text-cyan-brand mb-3">LVL {{ lvl }} · {{ rankName }}</div>
           <div class="h-2.5 bg-bg-3 rounded-full overflow-hidden">
-            <div class="hero-scene-bar h-full rounded-full bg-gradient-to-r from-cyan-brand to-mint-brand shadow-[0_0_14px_rgba(24,239,242,0.5)]" style="width: 68%"></div>
+            <div class="hero-scene-bar h-full rounded-full bg-gradient-to-r from-cyan-brand to-mint-brand shadow-[0_0_14px_rgba(24,239,242,0.5)]" :style="{ width: xpPercent + '%' }"></div>
           </div>
           <div class="flex justify-between font-mono text-[11px] text-ink-2 mt-2.5">
-            <span>3 420 XP</span>
-            <span>до след. уровня 580 XP</span>
+            <span>{{ fmt(xp) }} XP</span>
+            <span>до след. уровня {{ fmt(xpToNext) }} XP</span>
           </div>
         </div>
       </div>

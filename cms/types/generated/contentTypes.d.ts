@@ -584,42 +584,6 @@ export interface ApiDailyQuestDailyQuest extends Struct.CollectionTypeSchema {
   };
 }
 
-export interface ApiHeroHero extends Struct.SingleTypeSchema {
-  collectionName: 'heroes';
-  info: {
-    description: '\u0413\u043B\u0430\u0432\u043D\u044B\u0439 \u044D\u043A\u0440\u0430\u043D \u043B\u0435\u043D\u0434\u0438\u043D\u0433\u0430';
-    displayName: 'Hero';
-    pluralName: 'heroes';
-    singularName: 'hero';
-  };
-  options: {
-    draftAndPublish: true;
-  };
-  attributes: {
-    createdAt: Schema.Attribute.DateTime;
-    createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
-      Schema.Attribute.Private;
-    ctaPrimary: Schema.Attribute.String &
-      Schema.Attribute.DefaultTo<'\u041D\u0430\u0447\u0430\u0442\u044C \u0438\u0433\u0440\u0430\u0442\u044C'>;
-    ctaSecondary: Schema.Attribute.String &
-      Schema.Attribute.DefaultTo<'\u041A\u0430\u043A \u044D\u0442\u043E \u0440\u0430\u0431\u043E\u0442\u0430\u0435\u0442'>;
-    eyebrow: Schema.Attribute.String &
-      Schema.Attribute.DefaultTo<'\u041F\u043B\u0430\u0442\u0444\u043E\u0440\u043C\u0430 \u0433\u0435\u0439\u043C\u0438\u0444\u0438\u043A\u0430\u0446\u0438\u0438'>;
-    lede: Schema.Attribute.Text;
-    locale: Schema.Attribute.String & Schema.Attribute.Private;
-    localizations: Schema.Attribute.Relation<'oneToMany', 'api::hero.hero'> &
-      Schema.Attribute.Private;
-    publishedAt: Schema.Attribute.DateTime;
-    stats: Schema.Attribute.Component<'shared.stat', true>;
-    titleLine1: Schema.Attribute.String;
-    titleLine2: Schema.Attribute.String;
-    titleLine3: Schema.Attribute.String;
-    updatedAt: Schema.Attribute.DateTime;
-    updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
-      Schema.Attribute.Private;
-  };
-}
-
 export interface ApiHowStepHowStep extends Struct.CollectionTypeSchema {
   collectionName: 'how_steps';
   info: {
@@ -1260,7 +1224,7 @@ export interface PluginUsersPermissionsUser
         },
         number
       > &
-      Schema.Attribute.DefaultTo<100>;
+      Schema.Attribute.DefaultTo<0>;
     xpToNextLevel: Schema.Attribute.Integer &
       Schema.Attribute.SetMinMax<
         {
@@ -1287,7 +1251,6 @@ declare module '@strapi/strapi' {
       'api::badge.badge': ApiBadgeBadge;
       'api::challenge-level.challenge-level': ApiChallengeLevelChallengeLevel;
       'api::daily-quest.daily-quest': ApiDailyQuestDailyQuest;
-      'api::hero.hero': ApiHeroHero;
       'api::how-step.how-step': ApiHowStepHowStep;
       'api::role-card.role-card': ApiRoleCardRoleCard;
       'plugin::content-releases.release': PluginContentReleasesRelease;
