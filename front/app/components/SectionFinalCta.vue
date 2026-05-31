@@ -20,8 +20,8 @@ useReveal('.cta-reveal', { y: 40, scale: 0.92, blur: 6, stagger: 0.12, duration:
           Открой свой дашборд, выбери дейли по силам и забери первые XP уже сегодня.
         </p>
         <div class="cta-reveal flex gap-3.5 justify-center flex-wrap relative">
-          <BaseButton variant="primary" size="lg" as="a" href="#progress">
-            Открыть дашборд <span>→</span>
+          <BaseButton variant="primary" size="lg" as="a" href="#tasks">
+            Открыть задания <span>→</span>
           </BaseButton>
           <BaseButton variant="ghost" size="lg" as="a" href="#how">Сначала разобраться</BaseButton>
         </div>

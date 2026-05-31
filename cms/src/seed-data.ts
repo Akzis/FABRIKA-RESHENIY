@@ -86,10 +86,21 @@ export const seedAchievements = [
 // Daily quests are global templates. Per-user "done" comes from
 // User.completedDailyQuests relation — there's no `done` flag on the quest.
 export const seedDaily = [
-  { order: 1, title: 'Закрой 1 LIGHT-челлендж', points: 50 },
-  { order: 2, title: 'Оставь ревью коллеге', points: 30 },
-  { order: 3, title: 'Возьми в работу MEDIUM', points: 150 },
-  { order: 4, title: 'Прокачай свой профиль', points: 20 },
+  { order: 1, title: 'Закрой 1 LIGHT-челлендж', points: 50, description: 'Выбери любой челлендж уровня LIGHT и доведи его до сдачи. Лёгкая задача на 15–60 минут, чтобы поддержать дейли-серию и быстро забрать опыт.' },
+  { order: 2, title: 'Оставь ревью коллеге', points: 30, description: 'Зайди в работу любого участника команды и оставь содержательный комментарий: что хорошо, что можно улучшить. Ревью помогает команде расти, а тебе — очки.' },
+  { order: 3, title: 'Возьми в работу MEDIUM', points: 150, description: 'Закрепи за собой челлендж уровня MEDIUM. Не обязательно сдавать сегодня — достаточно взять задачу в работу и начать.' },
+  { order: 4, title: 'Прокачай свой профиль', points: 20, description: 'Загрузи аватар, проверь команду и роль. Заполненный профиль виден в рейтинге и команде.' },
+]
+
+// Challenges the participant can complete. Level drives the filter tabs in
+// the "Задания" section; xp is awarded on completion.
+export const seedChallenges = [
+  { order: 1, level: 'light', xp: 50, title: 'Закрой LIGHT-челлендж', description: 'Лёгкая задача на 15–60 минут. Идеально, чтобы поддержать серию и быстро забрать опыт.' },
+  { order: 2, level: 'light', xp: 50, title: 'Наведи порядок в своей доске задач', description: 'Разбери карточки, закрой завершённое, расставь приоритеты на сегодня.' },
+  { order: 3, level: 'medium', xp: 150, title: 'Возьми и сдай MEDIUM-челлендж', description: 'Задача на 1–4 часа. Требует погружения, но и опыта даёт втрое больше лёгкой.' },
+  { order: 4, level: 'medium', xp: 150, title: 'Сделай ревью pull request коллеги', description: 'Внимательно посмотри изменения, оставь конструктивные комментарии и одобри либо запроси правки.' },
+  { order: 5, level: 'hard', xp: 500, title: 'Закрой HARD-челлендж', description: 'Хардкорная задача на день и больше. Максимум опыта и эксклюзивные ачивки.' },
+  { order: 6, level: 'hard', xp: 500, title: 'Спроектируй и презентуй фичу команде', description: 'Продумай архитектуру, оформи решение и защити его перед командой.' },
 ]
 
 export const seedRoles = [

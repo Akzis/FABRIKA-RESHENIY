@@ -7,10 +7,11 @@
     "displayName": "Daily quest",
     "description": "Дейли-задание"
   },
-  "options": { "draftAndPublish": true },
+  "options": { "draftAndPublish": false },
   "attributes": {
     "order": { "type": "integer", "default": 1 },
     "title": { "type": "string", "required": true },
+    "description": { "type": "text" },
     "points": { "type": "integer", "required": true, "default": 50 }
   }
 }

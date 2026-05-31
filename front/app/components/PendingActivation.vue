@@ -14,9 +14,9 @@ const handleLogout = async () => {
     <header class="border-b border-line" style="background: var(--color-nav-bg)">
       <div class="max-w-[1320px] mx-auto px-8 flex items-center justify-between h-[72px]">
         <div class="flex items-center gap-3">
-          <img src="/voxel/logo.png" alt="Фабрика решений" class="logo-mark h-7 [image-rendering:pixelated]" />
+          <BrandLogo light="/voxel/logo.png" dark="/voxel/logowhite.png" img-class="logo-mark h-7 [image-rendering:pixelated]" />
           <span class="hidden md:inline font-mono text-[11px] tracking-[0.08em] uppercase text-ink-3 border-l border-line-strong pl-3 whitespace-nowrap">
-            <img src="/voxel/school21.png" alt="Фабрика решений" class="logo-mark h-7 [image-rendering:pixelated]" />
+            <BrandLogo light="/voxel/school21.png" dark="/voxel/school21(white).png" alt="Школа 21" img-class="logo-mark h-7 [image-rendering:pixelated]" />
           </span>
         </div>
         <div class="flex items-center gap-4">

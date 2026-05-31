@@ -1,11 +1,23 @@
 <script setup lang="ts">
+import { computed } from 'vue'
+import type { UserProfile } from '~/types/user'
+import type { Badge } from '~/types/landing'
+
 const { badges, achievements } = useLandingData()
+const user = useStrapiUser<UserProfile>()
 
 const accentVar: Record<string, string> = {
   cyan: 'var(--color-cyan-brand)',
   mint: 'var(--color-mint-brand)',
   purple: 'var(--color-purple-brand)',
 }
+
+// Which badges this user has actually earned — pulled from /api/users/me
+// (earnedBadges). A fresh account has none, so nothing shows as collected.
+const earnedIds = computed(() => new Set((user.value?.earnedBadges ?? []).map(b => b.id)))
+const isGot = (b: Badge) => b.id != null && earnedIds.value.has(b.id)
+const earnedCount = computed(() => badges.value.filter(isGot).length)
+const totalCount = computed(() => badges.value.length)
 
 useReveal('.ach-grid', { y: 40, scale: 0.96, duration: 0.9 })
 useReveal('.ach-grid .badge', { stagger: 0.04, y: 18, scale: 0.5, duration: 0.7, ease: 'back.out(2)', trigger: '.ach-grid', delay: 0.2 })
@@ -25,7 +37,7 @@ useReveal('.ach-item', { stagger: 0.12, x: 50, y: 0, duration: 0.85, ease: 'powe
         <div class="ach-grid bg-bg-2 border border-line rounded-[22px] p-8">
           <div class="font-mono text-[11px] tracking-[0.14em] text-ink-3 uppercase mb-[22px] flex justify-between">
             <span>Коллекция бейджей</span>
-            <span class="text-cyan-brand">18 / 42</span>
+            <span class="text-cyan-brand">{{ earnedCount }} / {{ totalCount }}</span>
           </div>
           <div class="grid grid-cols-3 sm:grid-cols-4 gap-3">
             <div
@@ -35,13 +47,13 @@ useReveal('.ach-item', { stagger: 0.12, x: 50, y: 0, duration: 0.85, ease: 'powe
                 'badge relative aspect-square rounded-[14px] bg-bg-3 border border-line flex flex-col items-center justify-center p-2.5 text-center gap-1.5 transition-[transform,border-color] duration-150 hover:-translate-y-0.5 hover:border-line-strong cursor-pointer',
                 b.locked ? 'opacity-50' : '',
               ]"
-              :style="b.got ? { borderColor: accentVar[b.accent ?? 'cyan'] } : {}"
+              :style="isGot(b) ? { borderColor: accentVar[b.accent ?? 'cyan'] } : {}"
             >
               <span
                 class="font-pix text-[28px] leading-none"
-                :style="b.got ? { color: accentVar[b.accent ?? 'cyan'] } : { color: 'var(--color-ink-3)' }"
+                :style="isGot(b) ? { color: accentVar[b.accent ?? 'cyan'] } : { color: 'var(--color-ink-3)' }"
               >{{ b.symbol }}</span>
-              <span class="font-mono text-[10px] tracking-[0.06em] uppercase" :class="b.got ? 'text-ink-2' : 'text-ink-3'">
+              <span class="font-mono text-[10px] tracking-[0.06em] uppercase" :class="isGot(b) ? 'text-ink-2' : 'text-ink-3'">
                 {{ b.label }}
               </span>
               <span v-if="b.locked" class="absolute top-2 right-2 text-[10px] opacity-60">🔒</span>

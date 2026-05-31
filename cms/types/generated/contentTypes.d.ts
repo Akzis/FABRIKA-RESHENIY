@@ -551,6 +551,49 @@ export interface ApiChallengeLevelChallengeLevel
   };
 }
 
+export interface ApiChallengeChallenge extends Struct.CollectionTypeSchema {
+  collectionName: 'challenges';
+  info: {
+    description: '\u0427\u0435\u043B\u043B\u0435\u043D\u0434\u0436-\u0437\u0430\u0434\u0430\u043D\u0438\u0435 (LIGHT / MEDIUM / HARD), \u043A\u043E\u0442\u043E\u0440\u043E\u0435 \u0443\u0447\u0430\u0441\u0442\u043D\u0438\u043A \u043C\u043E\u0436\u0435\u0442 \u0432\u044B\u043F\u043E\u043B\u043D\u0438\u0442\u044C';
+    displayName: 'Challenge';
+    pluralName: 'challenges';
+    singularName: 'challenge';
+  };
+  options: {
+    draftAndPublish: false;
+  };
+  attributes: {
+    createdAt: Schema.Attribute.DateTime;
+    createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+    description: Schema.Attribute.Text;
+    level: Schema.Attribute.Enumeration<['light', 'medium', 'hard']> &
+      Schema.Attribute.Required &
+      Schema.Attribute.DefaultTo<'light'>;
+    locale: Schema.Attribute.String & Schema.Attribute.Private;
+    localizations: Schema.Attribute.Relation<
+      'oneToMany',
+      'api::challenge.challenge'
+    > &
+      Schema.Attribute.Private;
+    order: Schema.Attribute.Integer & Schema.Attribute.DefaultTo<1>;
+    publishedAt: Schema.Attribute.DateTime;
+    title: Schema.Attribute.String & Schema.Attribute.Required;
+    updatedAt: Schema.Attribute.DateTime;
+    updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+    xp: Schema.Attribute.Integer &
+      Schema.Attribute.Required &
+      Schema.Attribute.SetMinMax<
+        {
+          min: 0;
+        },
+        number
+      > &
+      Schema.Attribute.DefaultTo<50>;
+  };
+}
+
 export interface ApiDailyQuestDailyQuest extends Struct.CollectionTypeSchema {
   collectionName: 'daily_quests';
   info: {
@@ -560,12 +603,13 @@ export interface ApiDailyQuestDailyQuest extends Struct.CollectionTypeSchema {
     singularName: 'daily-quest';
   };
   options: {
-    draftAndPublish: true;
+    draftAndPublish: false;
   };
   attributes: {
     createdAt: Schema.Attribute.DateTime;
     createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
       Schema.Attribute.Private;
+    description: Schema.Attribute.Text;
     locale: Schema.Attribute.String & Schema.Attribute.Private;
     localizations: Schema.Attribute.Relation<
       'oneToMany',
@@ -650,6 +694,39 @@ export interface ApiRoleCardRoleCard extends Struct.CollectionTypeSchema {
     publishedAt: Schema.Attribute.DateTime;
     tag: Schema.Attribute.String & Schema.Attribute.Required;
     title: Schema.Attribute.String & Schema.Attribute.Required;
+    updatedAt: Schema.Attribute.DateTime;
+    updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+  };
+}
+
+export interface ApiTeamTeam extends Struct.CollectionTypeSchema {
+  collectionName: 'teams';
+  info: {
+    description: '\u041A\u043E\u043C\u0430\u043D\u0434\u0430: \u043E\u0434\u0438\u043D \u043F\u0440\u043E\u0435\u043A\u0442\u043D\u044B\u0439 \u043C\u0435\u043D\u0435\u0434\u0436\u0435\u0440 \u0438 \u0443\u0447\u0430\u0441\u0442\u043D\u0438\u043A\u0438 (\u0431\u0435\u0437 \u043E\u0433\u0440\u0430\u043D\u0438\u0447\u0435\u043D\u0438\u044F)';
+    displayName: 'Team';
+    pluralName: 'teams';
+    singularName: 'team';
+  };
+  options: {
+    draftAndPublish: false;
+  };
+  attributes: {
+    createdAt: Schema.Attribute.DateTime;
+    createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+    locale: Schema.Attribute.String & Schema.Attribute.Private;
+    localizations: Schema.Attribute.Relation<'oneToMany', 'api::team.team'> &
+      Schema.Attribute.Private;
+    members: Schema.Attribute.Relation<
+      'oneToMany',
+      'plugin::users-permissions.user'
+    >;
+    name: Schema.Attribute.String &
+      Schema.Attribute.Required &
+      Schema.Attribute.Unique;
+    pm: Schema.Attribute.Relation<'oneToOne', 'plugin::users-permissions.user'>;
+    publishedAt: Schema.Attribute.DateTime;
     updatedAt: Schema.Attribute.DateTime;
     updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
       Schema.Attribute.Private;
@@ -1115,6 +1192,7 @@ export interface PluginUsersPermissionsUser
     timestamps: true;
   };
   attributes: {
+    avatar: Schema.Attribute.Media<'images'>;
     badgesCount: Schema.Attribute.Integer &
       Schema.Attribute.SetMinMax<
         {
@@ -1132,6 +1210,10 @@ export interface PluginUsersPermissionsUser
         number
       > &
       Schema.Attribute.DefaultTo<0>;
+    completedChallenges: Schema.Attribute.Relation<
+      'manyToMany',
+      'api::challenge.challenge'
+    >;
     completedDailyQuests: Schema.Attribute.Relation<
       'manyToMany',
       'api::daily-quest.daily-quest'
@@ -1142,6 +1224,7 @@ export interface PluginUsersPermissionsUser
     createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
       Schema.Attribute.Private;
     displayName: Schema.Attribute.String;
+    earnedBadges: Schema.Attribute.Relation<'manyToMany', 'api::badge.badge'>;
     email: Schema.Attribute.Email &
       Schema.Attribute.Required &
       Schema.Attribute.SetMinMaxLength<{
@@ -1161,11 +1244,14 @@ export interface PluginUsersPermissionsUser
       'plugin::users-permissions.user'
     > &
       Schema.Attribute.Private;
+    managedTeam: Schema.Attribute.Relation<'oneToOne', 'api::team.team'>;
     password: Schema.Attribute.Password &
       Schema.Attribute.Private &
       Schema.Attribute.SetMinMaxLength<{
         minLength: 6;
       }>;
+    profileActivated: Schema.Attribute.Boolean &
+      Schema.Attribute.DefaultTo<false>;
     provider: Schema.Attribute.String;
     publishedAt: Schema.Attribute.DateTime;
     resetPasswordToken: Schema.Attribute.String & Schema.Attribute.Private;
@@ -1181,7 +1267,7 @@ export interface PluginUsersPermissionsUser
         number
       > &
       Schema.Attribute.DefaultTo<0>;
-    team: Schema.Attribute.String & Schema.Attribute.DefaultTo<'Astro'>;
+    team: Schema.Attribute.Relation<'manyToOne', 'api::team.team'>;
     teamCupCurrent: Schema.Attribute.Integer &
       Schema.Attribute.SetMinMax<
         {
@@ -1250,9 +1336,11 @@ declare module '@strapi/strapi' {
       'api::achievement.achievement': ApiAchievementAchievement;
       'api::badge.badge': ApiBadgeBadge;
       'api::challenge-level.challenge-level': ApiChallengeLevelChallengeLevel;
+      'api::challenge.challenge': ApiChallengeChallenge;
       'api::daily-quest.daily-quest': ApiDailyQuestDailyQuest;
       'api::how-step.how-step': ApiHowStepHowStep;
       'api::role-card.role-card': ApiRoleCardRoleCard;
+      'api::team.team': ApiTeamTeam;
       'plugin::content-releases.release': PluginContentReleasesRelease;
       'plugin::content-releases.release-action': PluginContentReleasesReleaseAction;
       'plugin::i18n.locale': PluginI18NLocale;

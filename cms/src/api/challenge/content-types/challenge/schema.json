@@ -1,0 +1,23 @@
+{
+  "kind": "collectionType",
+  "collectionName": "challenges",
+  "info": {
+    "singularName": "challenge",
+    "pluralName": "challenges",
+    "displayName": "Challenge",
+    "description": "Челлендж-задание (LIGHT / MEDIUM / HARD), которое участник может выполнить"
+  },
+  "options": { "draftAndPublish": false },
+  "attributes": {
+    "order": { "type": "integer", "default": 1 },
+    "title": { "type": "string", "required": true },
+    "description": { "type": "text" },
+    "level": {
+      "type": "enumeration",
+      "enum": ["light", "medium", "hard"],
+      "default": "light",
+      "required": true
+    },
+    "xp": { "type": "integer", "required": true, "default": 50, "min": 0 }
+  }
+}

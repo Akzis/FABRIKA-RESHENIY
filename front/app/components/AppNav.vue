@@ -4,13 +4,24 @@ import { computed, ref } from 'vue'
 const user = useStrapiUser()
 const { logout } = useStrapiAuth()
 
-const links = [
+const allLinks = [
   { href: '#how', label: 'Как это работает' },
-  { href: '#levels', label: 'Уровни' },
-  { href: '#progress', label: 'Прогресс' },
+  { href: '#tasks', label: 'Задания' },
   { href: '#leaderboard', label: 'Рейтинг' },
   { href: '#roles', label: 'Команды' },
 ]
+
+// PMs don't see the player sections (mechanics, levels, progress), so the
+// quick-nav must not link to anchors that no longer render on the page.
+const isPm = computed(() => (user.value as any)?.teamRole === 'pm')
+const hasTeam = computed(() => !!(user.value as any)?.team)
+const pmHidden = new Set(['#how', '#tasks'])
+const links = computed(() => {
+  let ls = isPm.value ? allLinks.filter(l => !pmHidden.has(l.href)) : allLinks
+  // Tasks section is hidden for participants without a team.
+  if (!isPm.value && !hasTeam.value) ls = ls.filter(l => l.href !== '#tasks')
+  return ls
+})
 
 const displayName = computed(() => {
   const u = user.value as any
@@ -18,6 +29,8 @@ const displayName = computed(() => {
 })
 
 const initial = computed(() => (displayName.value[0] ?? '?').toUpperCase())
+
+const { avatarUrl } = useUserAvatar()
 
 const onLogout = async () => {
   await logout()
@@ -43,9 +56,9 @@ const closeProfile = () => {
   <nav class="sticky top-0 z-50 backdrop-blur-md border-b border-line" style="background: var(--color-nav-bg)">
     <div class="max-w-[1320px] mx-auto px-8 flex items-center justify-between h-[72px] gap-8">
       <a href="#" class="flex items-center gap-3">
-        <img src="/voxel/logo.png" alt="Фабрика решений" class="logo-mark h-7 [image-rendering:pixelated]" />
+        <BrandLogo light="/voxel/logo.png" dark="/voxel/logowhite.png" img-class="logo-mark h-7 [image-rendering:pixelated]" />
         <span class="hidden xl:inline font-mono text-[11px] tracking-[0.08em] uppercase text-ink-3 border-l border-line-strong pl-3 whitespace-nowrap">
-          <img src="/voxel/school21.png" alt="Фабрика решений" class="logo-mark h-7 [image-rendering:pixelated]" />
+          <BrandLogo light="/voxel/school21.png" dark="/voxel/school21(white).png" alt="Школа 21" img-class="logo-mark h-7 [image-rendering:pixelated]" />
         </span>
       </a>
 
@@ -64,8 +77,9 @@ const closeProfile = () => {
           :aria-label="`Открыть профиль ${displayName}`"
           @click="openProfile"
         >
-          <div class="profile-avatar w-9 h-9 rounded-[10px] flex items-center justify-center font-pix text-white text-base" style="background: linear-gradient(135deg, var(--color-purple-brand), var(--color-cyan-brand))">
-            {{ initial }}
+          <div class="profile-avatar w-9 h-9 rounded-[10px] overflow-hidden flex items-center justify-center font-pix text-white text-base" style="background: linear-gradient(135deg, var(--color-purple-brand), var(--color-cyan-brand))">
+            <img v-if="avatarUrl" :src="avatarUrl" alt="" class="w-full h-full object-cover" />
+            <template v-else>{{ initial }}</template>
           </div>
           <span class="profile-name font-mono text-[12px] tracking-[0.04em] text-ink-2 max-w-[140px] truncate">{{ displayName }}</span>
         </button>

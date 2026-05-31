@@ -24,6 +24,7 @@ export interface ChallengeLevel {
 }
 
 export interface Badge {
+  id?: number
   symbol: string
   label: string
   accent?: Accent
@@ -42,7 +43,18 @@ export interface Achievement {
 export interface DailyQuest {
   id?: number
   title: string
+  description?: string
   points: number
+}
+
+export type ChallengeTaskLevel = 'light' | 'medium' | 'hard'
+
+export interface ChallengeTask {
+  id?: number
+  title: string
+  description?: string
+  level: ChallengeTaskLevel
+  xp: number
 }
 
 export interface LeaderboardRow {

@@ -14,6 +14,8 @@ const accentMap: Record<string, string> = {
 const user = useStrapiUser() as unknown as { value: UserProfile | null }
 const u = computed(() => user.value)
 
+const isPm = computed(() => u.value?.teamRole === 'pm')
+
 const MAX_LEVEL = 25
 
 const fmt = (n: number) => n.toLocaleString('ru-RU').replace(/,/g, ' ')
@@ -58,14 +60,26 @@ useBarFill('.hero-scene-bar', { duration: 1.6 })
         </p>
 
         <div class="flex gap-3.5 flex-wrap items-center">
-          <span class="hero-cta">
-            <BaseButton variant="primary" size="lg" as="a" href="#progress">
-              К моему дашборду <span>→</span>
-            </BaseButton>
-          </span>
-          <span class="hero-cta">
-            <BaseButton variant="ghost" size="lg" as="a" href="#how">Как это работает</BaseButton>
-          </span>
+          <template v-if="isPm">
+            <span class="hero-cta">
+              <BaseButton variant="primary" size="lg" as="a" href="#leaderboard">
+                Рейтинг команд <span>→</span>
+              </BaseButton>
+            </span>
+            <span class="hero-cta">
+              <BaseButton variant="ghost" size="lg" as="a" href="#roles">Команды</BaseButton>
+            </span>
+          </template>
+          <template v-else>
+            <span class="hero-cta">
+              <BaseButton variant="primary" size="lg" as="a" href="#tasks">
+                К моим заданиям <span>→</span>
+              </BaseButton>
+            </span>
+            <span class="hero-cta">
+              <BaseButton variant="ghost" size="lg" as="a" href="#how">Как это работает</BaseButton>
+            </span>
+          </template>
         </div>
 
         <div class="flex gap-8 mt-14 pt-8 border-t border-line">
@@ -83,7 +97,7 @@ useBarFill('.hero-scene-bar', { duration: 1.6 })
         <div class="scene-blob absolute rounded-full blur-[80px] opacity-45 w-[360px] h-[360px] bg-cyan-brand top-[10%] right-[-10%]"></div>
         <div class="scene-blob absolute rounded-full blur-[80px] opacity-35 w-[320px] h-[320px] bg-purple-brand bottom-[10%] left-[-5%]"></div>
 
-        <div class="scene-card absolute left-[30px] top-[30px] z-[3] border border-line-strong rounded-xl py-3.5 px-4 backdrop-blur-md flex items-center gap-3" style="background: var(--color-panel-bg)">
+        <div v-if="!isPm" class="scene-card absolute left-[30px] top-[30px] z-[3] border border-line-strong rounded-xl py-3.5 px-4 backdrop-blur-md flex items-center gap-3" style="background: var(--color-panel-bg)">
           <span class="w-2.5 h-2.5 bg-mint-brand rounded-full shadow-[0_0_12px_var(--color-mint-brand)]"></span>
           <span class="font-mono text-[12px] tracking-[0.06em] text-ink-2">
             <b class="text-mint-brand font-semibold">+250 XP</b> · челлендж выполнен
@@ -95,7 +109,7 @@ useBarFill('.hero-scene-bar', { duration: 1.6 })
         <img src="/voxel/arrow.png" class="scene-vox absolute w-[200px] right-[30px] bottom-[80px] drop-shadow-[0_30px_50px_rgba(0,0,0,0.6)] animate-float-2" alt="" />
         <img src="/voxel/chat.png" class="scene-vox absolute w-[150px] left-[80px] bottom-[60px] drop-shadow-[0_30px_50px_rgba(0,0,0,0.6)] animate-float-3" alt="" />
 
-        <div class="scene-xp absolute right-5 bottom-5 z-[3] w-[280px] p-[18px] border border-line-strong rounded-[14px] backdrop-blur-md" style="background: var(--color-panel-bg)">
+        <div v-if="!isPm" class="scene-xp absolute right-5 bottom-5 z-[3] w-[280px] p-[18px] border border-line-strong rounded-[14px] backdrop-blur-md" style="background: var(--color-panel-bg)">
           <div class="flex justify-between items-center font-mono text-[11px] tracking-[0.08em] text-ink-3 uppercase mb-2.5">
             <span>Текущий уровень</span>
             <span>{{ lvl }} / {{ MAX_LEVEL }}</span>

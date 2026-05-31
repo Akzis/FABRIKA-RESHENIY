@@ -1,9 +1,14 @@
 <script setup lang="ts">
-import { onMounted } from 'vue'
+import { computed, onMounted } from 'vue'
 import type { UserProfile } from '~/types/user'
 
 const user = useStrapiUser<UserProfile>()
 const token = useStrapiToken()
+const invite = useTeamInvite()
+
+// Project managers manage their team rather than play, so personal gamification
+// (challenges, XP, achievements/badges, daily streak) is hidden for them.
+const isPm = computed(() => user.value?.teamRole === 'pm')
 const strapiBase = (useRuntimeConfig().public as any)?.strapi?.url ?? 'http://localhost:1337'
 
 // Fetch extended profile fields (level, xp, streak, etc.) from /api/users/me
@@ -28,6 +33,9 @@ await useAsyncData('landing', async () => {
 })
 
 onMounted(() => {
+  // Already logged in and arrived via an invite link → join the team now.
+  if (user.value) void invite.redeem()
+
   const onClick = (e: Event) => {
     const a = (e.target as HTMLElement).closest('a[href^="#"]') as HTMLAnchorElement | null
     if (!a) return
@@ -49,13 +57,12 @@ onMounted(() => {
   <div v-else>
     <AppNav />
     <AppHero />
-    <SectionHowItWorks />
-    <SectionLevels />
-    <SectionAchievements />
-    <SectionProgress />
+    <SectionHowItWorks v-if="!isPm" />
+    <SectionTasks v-if="!isPm && !!user.team" />
+    <SectionAchievements v-if="!isPm" />
     <SectionLeaderboard />
     <SectionRoles />
-    <SectionFinalCta />
+    <SectionFinalCta v-if="!isPm" />
     <AppFooter />
   </div>
 </template>

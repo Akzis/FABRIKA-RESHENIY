@@ -65,7 +65,24 @@
     },
 
     "displayName": { "type": "string" },
-    "team": { "type": "string", "default": "Astro" },
+    "avatar": {
+      "type": "media",
+      "multiple": false,
+      "required": false,
+      "allowedTypes": ["images"]
+    },
+    "team": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "api::team.team",
+      "inversedBy": "members"
+    },
+    "managedTeam": {
+      "type": "relation",
+      "relation": "oneToOne",
+      "target": "api::team.team",
+      "mappedBy": "pm"
+    },
     "teamRole": {
       "type": "enumeration",
       "enum": ["member", "pm"],
@@ -84,6 +101,16 @@
       "type": "relation",
       "relation": "manyToMany",
       "target": "api::daily-quest.daily-quest"
+    },
+    "completedChallenges": {
+      "type": "relation",
+      "relation": "manyToMany",
+      "target": "api::challenge.challenge"
+    },
+    "earnedBadges": {
+      "type": "relation",
+      "relation": "manyToMany",
+      "target": "api::badge.badge"
     },
     "profileActivated": { "type": "boolean", "default": false }
   }

@@ -5,6 +5,7 @@ type Mode = 'login' | 'register'
 type Role = 'member' | 'pm'
 
 const { login, register, fetchUser } = useStrapiAuth()
+const invite = useTeamInvite()
 const strapiUrl = (useRuntimeConfig().public as any)?.strapi?.url ?? 'http://localhost:1337'
 
 const mode = ref<Mode>('login')
@@ -72,6 +73,8 @@ const submit = async () => {
     if (import.meta.client) {
       try { localStorage.setItem('fr-role', role.value) } catch { /* ignore */ }
     }
+    // If this visitor arrived via a PM's invite link, join that team now.
+    await invite.redeem()
     // The page wrapping us re-renders into the landing as soon as user state flips.
   } catch (e: any) {
     error.value = e?.error?.message ?? e?.data?.error?.message ?? e?.message ?? 'Не удалось войти'
@@ -91,9 +94,9 @@ const switchMode = (m: Mode) => {
     <header class="border-b border-line" style="background: var(--color-nav-bg)">
       <div class="max-w-[1320px] mx-auto px-8 flex items-center justify-between h-[72px]">
         <div class="flex items-center gap-3">
-          <img src="/voxel/logo.png" alt="Фабрика решений" class="logo-mark h-7 [image-rendering:pixelated]" />
+          <BrandLogo light="/voxel/logo.png" dark="/voxel/logowhite.png" img-class="logo-mark h-7 [image-rendering:pixelated]" />
           <span class="hidden md:inline font-mono text-[11px] tracking-[0.08em] uppercase text-ink-3 border-l border-line-strong pl-3 whitespace-nowrap">
-            <img src="/voxel/school21.png" alt="Фабрика решений" class="logo-mark h-7 [image-rendering:pixelated]" />
+            <BrandLogo light="/voxel/school21.png" dark="/voxel/school21(white).png" alt="Школа 21" img-class="logo-mark h-7 [image-rendering:pixelated]" />
           </span>
         </div>
         <ThemeToggle />

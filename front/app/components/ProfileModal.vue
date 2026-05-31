@@ -16,6 +16,7 @@ const displayName = computed(() => u.value?.displayName || u.value?.username || 
 const username    = computed(() => u.value?.username ?? '—')
 const email       = computed(() => u.value?.email ?? '—')
 const initial     = computed(() => (displayName.value[0] ?? '?').toUpperCase())
+const isPm        = computed(() => u.value?.teamRole === 'pm')
 const roleLabel   = computed(() => (u.value?.teamRole === 'pm' ? 'PM' : 'участник'))
 const teamLine    = computed(() =>
   u.value?.team ? `${roleLabel.value} команды «${u.value.team}»` : 'роль не назначена',
@@ -36,9 +37,70 @@ const cupTotal   = computed(() => Math.max(u.value?.teamCupTotal ?? 10000, 1))
 const cupPercent = computed(() => Math.min(100, Math.round((cupCurrent.value / cupTotal.value) * 100)))
 
 const challengesClosed = computed(() => u.value?.challengesClosed ?? 0)
-const badgesCount      = computed(() => u.value?.badgesCount ?? 0)
+const badgesCount      = computed(() => u.value?.earnedBadges?.length ?? u.value?.badgesCount ?? 0)
 
 const fmt = (n: number) => n.toLocaleString('ru-RU').replace(/,/g, ' ')
+
+// ── avatar upload ──
+const { avatarUrl, upload: uploadAvatar } = useUserAvatar()
+const fileInput = ref<HTMLInputElement | null>(null)
+const avatarUploading = ref(false)
+const avatarError = ref<string | null>(null)
+
+const pickAvatar = () => {
+  if (avatarUploading.value) return
+  fileInput.value?.click()
+}
+const onAvatarChange = async (e: Event) => {
+  const input = e.target as HTMLInputElement
+  const file = input.files?.[0]
+  input.value = '' // let the user re-pick the same file later
+  if (!file) return
+  if (!file.type.startsWith('image/')) { avatarError.value = 'Нужен файл изображения'; return }
+  if (file.size > 5 * 1024 * 1024) { avatarError.value = 'Файл больше 5 МБ'; return }
+  avatarError.value = null
+  avatarUploading.value = true
+  try {
+    await uploadAvatar(file)
+  } catch {
+    avatarError.value = 'Не удалось загрузить'
+  } finally {
+    avatarUploading.value = false
+  }
+}
+
+// ── PM-only: invite link for adding participants to the team ──
+const invite = useTeamInvite()
+const inviteUrl = ref<string | null>(null)
+const inviteState = ref<'idle' | 'loading' | 'copied' | 'error'>('idle')
+
+const inviteLabel = computed(() => {
+  switch (inviteState.value) {
+    case 'loading': return 'Создаём ссылку…'
+    case 'copied':  return 'Ссылка скопирована ✓'
+    case 'error':   return 'Не удалось создать ссылку'
+    default:        return 'Скопировать ссылку-приглашение'
+  }
+})
+
+const createInviteLink = async () => {
+  if (inviteState.value === 'loading') return
+  inviteState.value = 'loading'
+  try {
+    const link = await invite.createInvite()
+    if (!link) throw new Error('no link')
+    inviteUrl.value = link.url
+    try {
+      await navigator.clipboard.writeText(link.url)
+      inviteState.value = 'copied'
+    } catch {
+      // Clipboard blocked (e.g. http / permissions) — still surface the URL.
+      inviteState.value = 'idle'
+    }
+  } catch {
+    inviteState.value = 'error'
+  }
+}
 
 const backdropRef = ref<HTMLElement | null>(null)
 const cardRef     = ref<HTMLElement | null>(null)
@@ -204,12 +266,37 @@ defineExpose({ animateOutAndClose })
         <div class="pm-header pm-stagger">
           <div class="pm-avatar-wrap">
             <div class="pm-avatar-pulse" />
-            <div class="pm-avatar font-pix">{{ initial }}</div>
+            <button
+              type="button"
+              class="pm-avatar"
+              :class="{ 'has-img': !!avatarUrl }"
+              :disabled="avatarUploading"
+              :aria-label="avatarUrl ? 'Сменить аватар' : 'Загрузить аватар'"
+              @click="pickAvatar"
+            >
+              <img v-if="avatarUrl" :src="avatarUrl" alt="" class="pm-avatar-img" />
+              <span v-else class="font-pix">{{ initial }}</span>
+              <span class="pm-avatar-edit" aria-hidden="true">
+                <svg v-if="!avatarUploading" viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M12 20h9" />
+                  <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" />
+                </svg>
+                <span v-else class="pm-avatar-spin" />
+              </span>
+            </button>
+            <input
+              ref="fileInput"
+              type="file"
+              accept="image/*"
+              class="hidden"
+              @change="onAvatarChange"
+            />
           </div>
           <div class="pm-id">
             <div class="pm-name font-pix">{{ displayName }}</div>
             <div class="pm-sub font-mono">@{{ username }}</div>
-            <div class="pm-team font-mono">{{ teamLine }}</div>
+            <div v-if="avatarError" class="pm-avatar-err font-mono">{{ avatarError }}</div>
+            <div v-else class="pm-team font-mono">{{ teamLine }}</div>
           </div>
           <div class="pm-level font-pix" aria-label="Уровень">
             <span class="pm-level-label">LVL</span>
@@ -217,8 +304,8 @@ defineExpose({ animateOutAndClose })
           </div>
         </div>
 
-        <!-- STAT CHIPS -->
-        <div class="pm-stats">
+        <!-- STAT CHIPS (player-only: XP / streak / challenges / badges) -->
+        <div v-if="!isPm" class="pm-stats">
           <div class="pm-stat pm-stagger">
             <div class="pm-stat-num text-cyan-brand font-pix"><span class="pm-count" :data-target="xp">0</span></div>
             <div class="pm-stat-cap font-mono">всего XP</div>
@@ -239,14 +326,14 @@ defineExpose({ animateOutAndClose })
 
         <!-- PROGRESS BARS -->
         <div class="pm-bars">
-          <div class="pm-bar-block pm-stagger">
+          <div v-if="!isPm" class="pm-bar-block pm-stagger">
             <div class="pm-bar-head">
               <span class="font-mono">Опыт до {{ lvl + 1 }} уровня</span>
               <span class="font-mono"><b class="text-ink">{{ fmt(xp) }}</b> / {{ fmt(xpTotal) }} XP</span>
             </div>
             <div class="pm-bar"><i class="pm-bar-xp" :style="{ width: xpPercent + '%' }" /></div>
           </div>
-          <div class="pm-bar-block pm-stagger">
+          <div v-if="!isPm" class="pm-bar-block pm-stagger">
             <div class="pm-bar-head">
               <span class="font-mono">Дейли-серия</span>
               <span class="font-mono"><b class="text-ink">{{ streak }}</b> {{ streak === 1 ? 'день' : 'дней' }}</span>
@@ -282,6 +369,27 @@ defineExpose({ animateOutAndClose })
           <div class="pm-acc-row">
             <span class="pm-acc-key font-mono">Роль</span>
             <span class="pm-acc-val font-mono">{{ u?.teamRole === 'pm' ? 'Project Manager' : 'Участник' }}</span>
+          </div>
+        </div>
+
+        <!-- INVITE (PM only) -->
+        <div v-if="isPm" class="pm-invite pm-stagger">
+          <div class="pm-invite-head font-mono">Пригласить участника</div>
+          <p class="pm-invite-note font-mono">
+            Скопируй ссылку и передай участнику. Она действует 30 минут — кто
+            войдёт по ней, попадёт в команду «{{ u?.team || '—' }}».
+          </p>
+          <button
+            type="button"
+            class="pm-invite-btn font-mono"
+            :class="{ 'is-copied': inviteState === 'copied', 'is-error': inviteState === 'error' }"
+            :disabled="inviteState === 'loading'"
+            @click="createInviteLink"
+          >
+            {{ inviteLabel }}
+          </button>
+          <div v-if="inviteUrl" class="pm-invite-url font-mono" :title="inviteUrl">
+            {{ inviteUrl }}
           </div>
         </div>
       </div>
@@ -460,8 +568,54 @@ defineExpose({ animateOutAndClose })
   justify-content: center;
   color: #fff;
   font-size: 28px;
+  padding: 0;
+  border: 0;
+  overflow: hidden;
+  cursor: pointer;
   background: linear-gradient(135deg, var(--color-purple-brand), var(--color-cyan-brand));
   box-shadow: 0 0 0 1px var(--color-line-strong), 0 10px 24px -8px rgba(181,89,243,0.45);
+  transition: transform 200ms cubic-bezier(0.34,1.56,0.64,1);
+}
+.pm-avatar:hover:not(:disabled) { transform: scale(1.04); }
+.pm-avatar:disabled { cursor: progress; }
+.pm-avatar-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+/* edit affordance — a small badge bottom-right, brightens on hover */
+.pm-avatar-edit {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 8px 0 12px 0;
+  color: #fff;
+  background: rgba(11, 11, 14, 0.55);
+  backdrop-filter: blur(2px);
+  opacity: 0.85;
+  transition: opacity 150ms, background 150ms;
+}
+.pm-avatar:hover:not(:disabled) .pm-avatar-edit { opacity: 1; background: var(--color-cyan-brand); color: var(--color-btn-ink); }
+.pm-avatar-spin {
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.4);
+  border-top-color: #fff;
+  animation: pmSpin 0.7s linear infinite;
+}
+@keyframes pmSpin { to { transform: rotate(360deg); } }
+.pm-avatar-err {
+  font-size: 10px;
+  letter-spacing: .04em;
+  color: #ff7575;
+  margin-top: 5px;
 }
 .pm-avatar-pulse {
   position: absolute;
@@ -579,6 +733,61 @@ defineExpose({ animateOutAndClose })
 }
 .pm-acc-key { color: var(--color-ink-3); text-transform: uppercase; letter-spacing: .1em; font-size: 9px; flex-shrink: 0; }
 .pm-acc-val { color: var(--color-ink); text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* INVITE (PM only) */
+.pm-invite {
+  border-top: 1px solid var(--color-line);
+  margin-top: 16px;
+  padding-top: 16px;
+}
+.pm-invite-head {
+  font-size: 10px;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  color: var(--color-ink-3);
+  margin-bottom: 8px;
+}
+.pm-invite-note {
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--color-ink-2);
+  margin: 0 0 12px;
+}
+.pm-invite-btn {
+  width: 100%;
+  padding: 11px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--color-cyan-brand);
+  background: rgba(24, 239, 242, 0.08);
+  color: var(--color-cyan-brand);
+  font-size: 11px;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: background 150ms, border-color 150ms, color 150ms, opacity 150ms;
+}
+.pm-invite-btn:hover:not(:disabled) { background: rgba(24, 239, 242, 0.16); }
+.pm-invite-btn:disabled { opacity: .6; cursor: progress; }
+.pm-invite-btn.is-copied {
+  border-color: var(--color-mint-brand);
+  background: rgba(82, 242, 197, 0.12);
+  color: var(--color-mint-brand);
+}
+.pm-invite-btn.is-error {
+  border-color: #ff7575;
+  background: rgba(255, 117, 117, 0.1);
+  color: #ff7575;
+}
+.pm-invite-url {
+  margin-top: 10px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--color-bg-3);
+  border: 1px solid var(--color-line);
+  color: var(--color-ink-2);
+  font-size: 10px;
+  word-break: break-all;
+}
 
 /* mobile */
 @media (max-width: 480px) {

@@ -4,6 +4,7 @@ import type {
   Achievement,
   Badge,
   ChallengeLevel,
+  ChallengeTask,
   DailyQuest,
   HeroStat,
   HowStep,
@@ -90,11 +91,20 @@ export const landingDefaults = {
   ] as Achievement[],
 
   daily: [
-    { title: 'Закрой 1 LIGHT-челлендж', points: 50 },
-    { title: 'Оставь ревью коллеге', points: 30 },
-    { title: 'Возьми в работу MEDIUM', points: 150 },
-    { title: 'Прокачай свой профиль', points: 20 },
+    { title: 'Закрой 1 LIGHT-челлендж', points: 50, description: 'Выбери любой челлендж уровня LIGHT и доведи его до сдачи. Лёгкая задача на 15–60 минут, чтобы поддержать дейли-серию и быстро забрать опыт.' },
+    { title: 'Оставь ревью коллеге', points: 30, description: 'Зайди в работу любого участника команды и оставь содержательный комментарий: что хорошо, что можно улучшить. Ревью помогает команде расти, а тебе — очки.' },
+    { title: 'Возьми в работу MEDIUM', points: 150, description: 'Закрепи за собой челлендж уровня MEDIUM. Не обязательно сдавать сегодня — достаточно взять задачу в работу и начать.' },
+    { title: 'Прокачай свой профиль', points: 20, description: 'Загрузи аватар, проверь команду и роль. Заполненный профиль виден в рейтинге и команде.' },
   ] as DailyQuest[],
+
+  challenges: [
+    { level: 'light', xp: 50, title: 'Закрой LIGHT-челлендж', description: 'Лёгкая задача на 15–60 минут. Идеально, чтобы поддержать серию и быстро забрать опыт.' },
+    { level: 'light', xp: 50, title: 'Наведи порядок в своей доске задач', description: 'Разбери карточки, закрой завершённое, расставь приоритеты на сегодня.' },
+    { level: 'medium', xp: 150, title: 'Возьми и сдай MEDIUM-челлендж', description: 'Задача на 1–4 часа. Требует погружения, но и опыта даёт втрое больше лёгкой.' },
+    { level: 'medium', xp: 150, title: 'Сделай ревью pull request коллеги', description: 'Внимательно посмотри изменения, оставь конструктивные комментарии и одобри либо запроси правки.' },
+    { level: 'hard', xp: 500, title: 'Закрой HARD-челлендж', description: 'Хардкорная задача на день и больше. Максимум опыта и эксклюзивные ачивки.' },
+    { level: 'hard', xp: 500, title: 'Спроектируй и презентуй фичу команде', description: 'Продумай архитектуру, оформи решение и защити его перед командой.' },
+  ] as ChallengeTask[],
 
   // Leaderboard теперь строится из реальных users (teamRole=member),
   // отсортированных по XP. Пустой массив = «пока никого нет».
@@ -141,6 +151,7 @@ export const useLandingData = () => {
     heroStats:    computed(() => store.heroStats.length    ? store.heroStats    : landingDefaults.heroStats),
     howSteps:     computed(() => store.howSteps.length     ? store.howSteps     : landingDefaults.howSteps),
     levels:       computed(() => store.levels.length       ? store.levels       : landingDefaults.levels),
+    challenges:   computed(() => store.challenges.length   ? store.challenges   : landingDefaults.challenges),
     badges:       computed(() => store.badges.length       ? store.badges       : landingDefaults.badges),
     achievements: computed(() => store.achievements.length ? store.achievements : landingDefaults.achievements),
     daily:        computed(() => store.daily.length        ? store.daily        : landingDefaults.daily),
@@ -187,18 +198,20 @@ export const useStrapiLanding = async () => {
         'fields[0]': 'id',
         'fields[1]': 'username',
         'fields[2]': 'displayName',
-        'fields[3]': 'team',
-        'fields[4]': 'teamRole',
-        'fields[5]': 'xp',
-        'fields[6]': 'level',
-        'fields[7]': 'challengesClosed',
+        'fields[3]': 'teamRole',
+        'fields[4]': 'xp',
+        'fields[5]': 'level',
+        'fields[6]': 'challengesClosed',
+        // team is now a relation — pull just its name for display
+        'populate[team][fields][0]': 'name',
       },
       headers: token ? { Authorization: `Bearer ${token}` } : {},
     })
 
-  const [steps, levels, badges, achievements, daily, topMembers, roles] = await Promise.all([
+  const [steps, levels, challenges, badges, achievements, daily, topMembers, roles] = await Promise.all([
     safe(() => find<Many<any>>('how-steps', { populate: ['icon'], sort: 'order:asc' })),
     safe(() => find<Many<any>>('challenge-levels', { populate: ['rows', 'image'], sort: 'order:asc' })),
+    safe(() => find<Many<any>>('challenges', { sort: 'order:asc' })),
     safe(() => find<Many<any>>('badges', { sort: 'order:asc' })),
     safe(() => find<Many<any>>('achievements', { sort: 'order:asc' })),
     safe(() => find<Many<any>>('daily-quests', { sort: 'order:asc' })),
@@ -233,10 +246,12 @@ export const useStrapiLanding = async () => {
 
   if (badges?.data?.length) {
     out.badges = badges.data.map((b: any) => ({
+      id: b.id,
       symbol: b.symbol,
       label: b.label,
       accent: accentFor(b.accent),
-      got: !!b.got,
+      // `got` is per-user, computed in SectionAchievements from the user's
+      // earnedBadges — the badge's own `got` flag is only a CMS preview default.
       locked: !!b.locked,
     }))
   }
@@ -249,7 +264,17 @@ export const useStrapiLanding = async () => {
 
   if (daily?.data?.length) {
     out.daily = daily.data.map((q: any) => ({
-      id: q.id, title: q.title, points: q.points,
+      id: q.id, title: q.title, description: q.description, points: q.points,
+    }))
+  }
+
+  if (challenges?.data?.length) {
+    out.challenges = challenges.data.map((c: any) => ({
+      id: c.id,
+      title: c.title,
+      description: c.description,
+      level: (['light', 'medium', 'hard'].includes(c.level) ? c.level : 'light') as ChallengeTask['level'],
+      xp: Number(c.xp ?? 0),
     }))
   }
 
@@ -272,7 +297,7 @@ export const useStrapiLanding = async () => {
         rank: idx + 1,
         userId: u.id,
         name,
-        team: u.team ? `${u.team} · участник` : 'без команды',
+        team: u.team?.name ? `${u.team.name} · участник` : 'без команды',
         level: `LVL ${u.level ?? 1}`,
         closed: `${closed} закрыто`,
         xp: xp.toLocaleString('ru-RU').replace(/,/g, ' '),

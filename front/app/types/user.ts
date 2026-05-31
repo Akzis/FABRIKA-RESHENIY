@@ -4,6 +4,7 @@ export interface UserProfile {
   username: string
   email: string
   displayName?: string | null
+  avatar?: { id?: number; url?: string } | null
   team?: string | null
   teamRole?: 'member' | 'pm' | null
   xp?: number | null
@@ -16,5 +17,7 @@ export interface UserProfile {
   teamCupCurrent?: number | null
   teamCupTotal?: number | null
   completedDailyQuests?: { id: number; documentId?: string }[] | null
+  completedChallenges?: { id: number; documentId?: string }[] | null
+  earnedBadges?: { id: number; documentId?: string }[] | null
   profileActivated?: boolean | null
 }

@@ -3,6 +3,7 @@ import type {
   Achievement,
   Badge,
   ChallengeLevel,
+  ChallengeTask,
   DailyQuest,
   HeroStat,
   HowStep,
@@ -14,6 +15,7 @@ interface LandingState {
   heroStats: HeroStat[]
   howSteps: HowStep[]
   levels: ChallengeLevel[]
+  challenges: ChallengeTask[]
   badges: Badge[]
   achievements: Achievement[]
   daily: DailyQuest[]
@@ -33,6 +35,7 @@ export const useLandingStore = defineStore('landing', {
     heroStats: [],
     howSteps: [],
     levels: [],
+    challenges: [],
     badges: [],
     achievements: [],
     daily: [],

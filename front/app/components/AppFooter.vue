@@ -1,10 +1,20 @@
 <script setup lang="ts">
+import { computed } from 'vue'
+import type { UserProfile } from '~/types/user'
+
+const user = useStrapiUser<UserProfile>()
+const isPm = computed(() => user.value?.teamRole === 'pm')
+const hasTeam = computed(() => !!user.value?.team)
+
+// Sections hidden for PMs — footer links to these anchors would lead nowhere.
+const pmHidden = new Set(['#how', '#tasks', '#achievements'])
+
 const cols = [
   {
     title: 'Платформа',
     links: [
       { href: '#how', label: 'Как это работает' },
-      { href: '#levels', label: 'Уровни' },
+      { href: '#tasks', label: 'Задания' },
       { href: '#achievements', label: 'Достижения' },
       { href: '#leaderboard', label: 'Рейтинг' },
     ],
@@ -27,6 +37,21 @@ const cols = [
     ],
   },
 ]
+
+// For PMs, drop dead anchors and any column left without links.
+const visibleCols = computed(() =>
+  cols
+    .map(c => ({
+      ...c,
+      links: c.links.filter((l) => {
+        if (isPm.value && pmHidden.has(l.href)) return false
+        // hide Tasks for participants without a team
+        if (!isPm.value && !hasTeam.value && l.href === '#tasks') return false
+        return true
+      }),
+    }))
+    .filter(c => c.links.length > 0),
+)
 </script>
 
 <template>
@@ -34,12 +59,12 @@ const cols = [
     <div class="max-w-[1320px] mx-auto px-8">
       <div class="grid grid-cols-1 md:grid-cols-[1.5fr_1fr_1fr_1fr] gap-10 mb-12">
         <div>
-          <img src="/voxel/logo.png" alt="Фабрика решений" class="logo-mark h-[30px] [image-rendering:pixelated] mb-4" />
+          <BrandLogo light="/voxel/logo.png" dark="/voxel/logowhite.png" img-class="logo-mark h-[30px] [image-rendering:pixelated] mb-4" />
           <p class="text-[13px] text-ink-3 max-w-[320px] leading-[1.55]">
             Платформа геймификации для команд. Челленджи, уровни, рейтинг и магазин наград — всё в одном окне.
           </p>
         </div>
-        <div v-for="c in cols" :key="c.title">
+        <div v-for="c in visibleCols" :key="c.title">
           <h5 class="font-mono text-[11px] tracking-[0.14em] text-ink-3 uppercase m-0 mb-[18px]">{{ c.title }}</h5>
           <a v-for="l in c.links" :key="l.label" :href="l.href" class="block text-sm text-ink-2 py-1.5 hover:text-cyan-brand">
             {{ l.label }}
@@ -50,7 +75,7 @@ const cols = [
         <span>© 2026 Фабрика решений</span>
         <div class="flex gap-5 items-center">
           <span class="text-ink-3 tracking-[0.1em]">Часть экосистемы</span>
-          <img src="/voxel/school21.png" alt="Школа 21" class="logo-mark h-[26px]" />
+          <BrandLogo light="/voxel/school21.png" dark="/voxel/school21(white).png" alt="Школа 21" img-class="logo-mark h-[26px]" />
         </div>
       </div>
     </div>

@@ -2,6 +2,7 @@
 import {
   seedAchievements,
   seedBadges,
+  seedChallenges,
   seedDaily,
   seedHero,
   seedHowSteps,
@@ -19,6 +20,7 @@ const PUBLIC_TYPES: { uid: string; actions: ('find' | 'findOne')[] }[] = [
   { uid: 'api::badge.badge', actions: ['find', 'findOne'] },
   { uid: 'api::achievement.achievement', actions: ['find', 'findOne'] },
   { uid: 'api::daily-quest.daily-quest', actions: ['find', 'findOne'] },
+  { uid: 'api::challenge.challenge', actions: ['find', 'findOne'] },
   { uid: 'api::role-card.role-card', actions: ['find', 'findOne'] },
 ]
 
@@ -59,6 +61,10 @@ async function grantAuthenticatedSelf(strapi: any) {
     'plugin::users-permissions.user.me',
     'plugin::users-permissions.user.find',
     'plugin::users-permissions.user.setRole',
+    'plugin::users-permissions.user.setAvatar',
+    'plugin::users-permissions.user.completeTask',
+    'plugin::users-permissions.user.createInvite',
+    'plugin::users-permissions.user.joinTeam',
     'api::daily-quest.daily-quest.find',
     'api::daily-quest.daily-quest.findOne',
   ])
@@ -123,6 +129,7 @@ export default {
       await seedIfEmpty(strapi, 'api::badge.badge', seedBadges)
       await seedIfEmpty(strapi, 'api::achievement.achievement', seedAchievements)
       await seedIfEmpty(strapi, 'api::daily-quest.daily-quest', seedDaily)
+      await seedIfEmpty(strapi, 'api::challenge.challenge', seedChallenges)
       await seedIfEmpty(strapi, 'api::role-card.role-card', seedRoles)
     } catch (e: any) {
       strapi.log.warn(`[bootstrap] seeding failed: ${e?.message ?? e}`)
