@@ -77,7 +77,7 @@ const inviteState = ref<'idle' | 'loading' | 'copied' | 'error'>('idle')
 const inviteLabel = computed(() => {
   switch (inviteState.value) {
     case 'loading': return 'Создаём ссылку…'
-    case 'copied':  return 'Ссылка скопирована ✓'
+    case 'copied':  return 'Ссылка скопирована'
     case 'error':   return 'Не удалось создать ссылку'
     default:        return 'Скопировать ссылку-приглашение'
   }

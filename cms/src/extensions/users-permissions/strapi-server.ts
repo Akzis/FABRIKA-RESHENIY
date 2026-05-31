@@ -253,6 +253,295 @@ export default (plugin: any) => {
     ctx.body = { ok: true, awarded: reward, xp: (Number(me?.xp) || 0) + reward };
   };
 
+  // ── /api/users/me/challenges/submit — participant sends a challenge for review ─
+  // Multipart: { challengeId, comment, files[] }. Creates a `pending` submission
+  // bound to the participant + their team. Blocks duplicates while one is still
+  // pending/approved/partial (a rejected one may be resubmitted).
+  plugin.controllers.user.submitChallenge = async (ctx: any) => {
+    const userId = ctx.state.user?.id;
+    if (!userId) return ctx.unauthorized('not logged in');
+
+    const body = ctx.request.body ?? {};
+    const challengeId = Number(body.challengeId ?? body.challenge ?? body.id);
+    const comment = String(body.comment ?? '').trim();
+    if (!challengeId) return ctx.badRequest('challengeId is required');
+
+    const challenge: any = await es.findOne('api::challenge.challenge', challengeId, {
+      fields: ['id', 'xp', 'title'],
+    });
+    if (!challenge) return ctx.badRequest('challenge not found');
+
+    const me: any = await es.findOne('plugin::users-permissions.user', userId, {
+      fields: ['id'],
+      populate: { team: { fields: ['id'] } },
+    });
+    const teamId = me?.team?.id ?? null;
+    if (!teamId) return ctx.badRequest('сначала вступите в команду');
+
+    // Already waiting on / credited for this challenge? Don't queue another.
+    const active: any[] = await es.findMany(
+      'api::challenge-submission.challenge-submission',
+      {
+        filters: {
+          participant: userId,
+          challenge: challengeId,
+          status: { $in: ['pending', 'approved', 'partial'] },
+        },
+        fields: ['id'],
+        limit: 1,
+      },
+    );
+    if (active?.length) {
+      return ctx.badRequest('это задание уже отправлено на проверку');
+    }
+
+    // Upload any attached files (best-effort: a failed file is skipped).
+    const incoming = ctx.request.files ?? {};
+    const raw = incoming.files ?? incoming.file ?? Object.values(incoming)[0];
+    const files = raw ? (Array.isArray(raw) ? raw : [raw]) : [];
+    const uploadService = strapi.plugin('upload').service('upload');
+    const uploadedIds: number[] = [];
+    for (const f of files) {
+      try {
+        const [up] = await uploadService.upload({ data: {}, files: f });
+        if (up?.id) uploadedIds.push(up.id);
+      } catch { /* skip this file */ }
+    }
+
+    const created: any = await es.create(
+      'api::challenge-submission.challenge-submission',
+      {
+        data: {
+          challenge: challengeId,
+          participant: userId,
+          team: teamId,
+          comment,
+          attachments: uploadedIds,
+          status: 'pending',
+        },
+      },
+    );
+
+    ctx.body = { ok: true, id: created.id, status: 'pending' };
+  };
+
+  // ── /api/users/me/submissions — list submissions ───────────────────────
+  // PM → every submission for their managed team. Participant → their own.
+  plugin.controllers.user.listSubmissions = async (ctx: any) => {
+    const userId = ctx.state.user?.id;
+    if (!userId) return ctx.unauthorized('not logged in');
+
+    const me: any = await es.findOne('plugin::users-permissions.user', userId, {
+      fields: ['teamRole'],
+      populate: { managedTeam: { fields: ['id'] } },
+    });
+
+    let filters: any;
+    if (me?.teamRole === 'pm') {
+      const teamId = me?.managedTeam?.id;
+      if (!teamId) return (ctx.body = { data: [] });
+      filters = { team: teamId };
+    } else {
+      filters = { participant: userId };
+    }
+
+    const rows: any[] = await es.findMany(
+      'api::challenge-submission.challenge-submission',
+      {
+        filters,
+        populate: {
+          challenge: { fields: ['id', 'title', 'level', 'xp'] },
+          participant: { fields: ['id', 'username', 'displayName'] },
+          attachments: { fields: ['id', 'name', 'url', 'mime', 'size'] },
+        },
+        sort: { createdAt: 'desc' },
+        limit: 200,
+      },
+    );
+
+    const data = (rows ?? []).map((r) => ({
+      id: r.id,
+      status: r.status,
+      comment: r.comment ?? '',
+      awardedXp: r.awardedXp ?? 0,
+      reviewNote: r.reviewNote ?? '',
+      reviewedAt: r.reviewedAt ?? null,
+      createdAt: r.createdAt,
+      challenge: r.challenge
+        ? { id: r.challenge.id, title: r.challenge.title, level: r.challenge.level, xp: r.challenge.xp }
+        : null,
+      participant: r.participant
+        ? { id: r.participant.id, name: r.participant.displayName || r.participant.username }
+        : null,
+      attachments: (r.attachments ?? []).map((a: any) => ({
+        id: a.id, name: a.name, url: a.url, mime: a.mime, size: a.size,
+      })),
+    }));
+
+    ctx.body = { data };
+  };
+
+  // ── /api/users/me/submissions/:id/review — PM grades a submission ──────
+  // Body: { decision: 'approved'|'rejected'|'partial', awardedXp?, reviewNote? }.
+  // approved/partial credit the participant (XP + completedChallenges); rejected
+  // awards nothing and lets them resubmit. Only the owning team's PM may review.
+  plugin.controllers.user.reviewSubmission = async (ctx: any) => {
+    const userId = ctx.state.user?.id;
+    if (!userId) return ctx.unauthorized('not logged in');
+
+    const subId = Number(ctx.params?.id);
+    const { decision, awardedXp, reviewNote } = ctx.request.body ?? {};
+    if (!subId) return ctx.badRequest('submission id is required');
+    if (!['approved', 'rejected', 'partial'].includes(decision)) {
+      return ctx.badRequest('decision must be "approved", "rejected" or "partial"');
+    }
+
+    const me: any = await es.findOne('plugin::users-permissions.user', userId, {
+      fields: ['teamRole'],
+      populate: { managedTeam: { fields: ['id'] } },
+    });
+    if (me?.teamRole !== 'pm') {
+      return ctx.forbidden('only a project manager can review submissions');
+    }
+
+    const sub: any = await es.findOne(
+      'api::challenge-submission.challenge-submission', subId,
+      {
+        fields: ['id', 'status'],
+        populate: {
+          challenge: { fields: ['id', 'xp'] },
+          participant: { fields: ['id'] },
+          team: { fields: ['id'] },
+        },
+      },
+    );
+    if (!sub) return ctx.notFound('submission not found');
+    if (sub.team?.id !== me?.managedTeam?.id) {
+      return ctx.forbidden('эта сдача не из вашей команды');
+    }
+    if (sub.status !== 'pending') {
+      return ctx.badRequest('эта сдача уже проверена');
+    }
+
+    const challengeXp = Number(sub.challenge?.xp) || 0;
+    let reward = 0;
+    if (decision === 'approved') {
+      reward = awardedXp != null ? Number(awardedXp) : challengeXp;
+    } else if (decision === 'partial') {
+      reward = awardedXp != null ? Number(awardedXp) : Math.round(challengeXp / 2);
+    }
+    reward = Math.max(0, Math.floor(reward) || 0);
+
+    await es.update('api::challenge-submission.challenge-submission', subId, {
+      data: {
+        status: decision,
+        awardedXp: reward,
+        reviewNote: String(reviewNote ?? '').trim(),
+        reviewedAt: new Date(),
+      },
+    });
+
+    // Credit the participant on a passing grade (approved or partial).
+    if (decision !== 'rejected' && sub.participant?.id) {
+      const pid = sub.participant.id;
+      const challengeId = sub.challenge?.id;
+      const participant: any = await es.findOne('plugin::users-permissions.user', pid, {
+        fields: ['xp', 'challengesClosed'],
+        populate: { completedChallenges: { fields: ['id'] } },
+      });
+      const doneIds: number[] = (participant?.completedChallenges ?? [])
+        .map((c: any) => c.id)
+        .filter((x: any) => x != null);
+
+      const data: Record<string, unknown> = {
+        xp: (Number(participant?.xp) || 0) + reward,
+      };
+      if (challengeId && !doneIds.includes(challengeId)) {
+        data.completedChallenges = [...doneIds, challengeId];
+        data.challengesClosed = (Number(participant?.challengesClosed) || 0) + 1;
+      }
+      await es.update('plugin::users-permissions.user', pid, { data });
+    }
+
+    ctx.body = { ok: true, status: decision, awardedXp: reward };
+  };
+
+  // ── /api/users/me/team — PM sees their whole team + per-member stats ───
+  plugin.controllers.user.getTeam = async (ctx: any) => {
+    const userId = ctx.state.user?.id;
+    if (!userId) return ctx.unauthorized('not logged in');
+
+    const me: any = await es.findOne('plugin::users-permissions.user', userId, {
+      fields: ['teamRole'],
+      populate: { managedTeam: { fields: ['id', 'name'] } },
+    });
+    if (me?.teamRole !== 'pm') {
+      return ctx.forbidden('only a project manager can view their team');
+    }
+    if (!me?.managedTeam) return (ctx.body = { team: null, members: [] });
+
+    const teamId = me.managedTeam.id;
+    const members: any[] = await es.findMany('plugin::users-permissions.user', {
+      // Exclude the PM themselves — they manage the team, they're not a player in it.
+      filters: { team: teamId, id: { $ne: userId } },
+      fields: [
+        'id', 'username', 'displayName',
+        'xp', 'level', 'challengesClosed', 'streak', 'badgesCount',
+      ],
+      populate: { avatar: { fields: ['url'] } },
+      sort: { xp: 'desc' },
+      limit: 500,
+    });
+
+    ctx.body = {
+      team: { id: me.managedTeam.id, name: me.managedTeam.name },
+      members: (members ?? []).map((m) => ({
+        id: m.id,
+        name: m.displayName || m.username,
+        username: m.username,
+        xp: m.xp ?? 0,
+        level: m.level ?? 1,
+        challengesClosed: m.challengesClosed ?? 0,
+        streak: m.streak ?? 0,
+        badgesCount: m.badgesCount ?? 0,
+        avatarUrl: m.avatar?.url ?? null,
+      })),
+    };
+  };
+
+  // ── /api/users/me/team/rename — PM renames their managed team ──────────
+  plugin.controllers.user.renameTeam = async (ctx: any) => {
+    const userId = ctx.state.user?.id;
+    if (!userId) return ctx.unauthorized('not logged in');
+
+    const name = String(ctx.request.body?.name ?? '').trim();
+    if (!name) return ctx.badRequest('название команды обязательно');
+
+    const me: any = await es.findOne('plugin::users-permissions.user', userId, {
+      fields: ['teamRole'],
+      populate: { managedTeam: { fields: ['id', 'name'] } },
+    });
+    if (me?.teamRole !== 'pm') {
+      return ctx.forbidden('only a project manager can rename the team');
+    }
+    if (!me?.managedTeam) return ctx.badRequest('your team is not set yet');
+
+    // Name must stay unique across teams (excluding our own).
+    const clash: any[] = await es.findMany('api::team.team', {
+      filters: { name, id: { $ne: me.managedTeam.id } },
+      fields: ['id'],
+      limit: 1,
+    });
+    if (clash?.length) {
+      return ctx.throw(409, 'Команда с таким названием уже существует');
+    }
+
+    const updated: any = await es.update('api::team.team', me.managedTeam.id, {
+      data: { name },
+    });
+    ctx.body = { ok: true, team: updated.name };
+  };
+
   // ── /api/users/me/avatar — upload & set the current user's avatar ──────
   plugin.controllers.user.setAvatar = async (ctx: any) => {
     const userId = ctx.state.user?.id;
@@ -303,6 +592,36 @@ export default (plugin: any) => {
       method: 'POST',
       path: '/users/me/tasks/complete',
       handler: 'user.completeTask',
+      config: { prefix: '', policies: [] },
+    },
+    {
+      method: 'POST',
+      path: '/users/me/challenges/submit',
+      handler: 'user.submitChallenge',
+      config: { prefix: '', policies: [] },
+    },
+    {
+      method: 'GET',
+      path: '/users/me/submissions',
+      handler: 'user.listSubmissions',
+      config: { prefix: '', policies: [] },
+    },
+    {
+      method: 'POST',
+      path: '/users/me/submissions/:id/review',
+      handler: 'user.reviewSubmission',
+      config: { prefix: '', policies: [] },
+    },
+    {
+      method: 'GET',
+      path: '/users/me/team',
+      handler: 'user.getTeam',
+      config: { prefix: '', policies: [] },
+    },
+    {
+      method: 'POST',
+      path: '/users/me/team/rename',
+      handler: 'user.renameTeam',
       config: { prefix: '', policies: [] },
     },
     {

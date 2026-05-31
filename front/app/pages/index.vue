@@ -57,6 +57,8 @@ onMounted(() => {
   <div v-else>
     <AppNav />
     <AppHero />
+    <SectionTeamRoster v-if="isPm && !!user.team" />
+    <SectionSubmissionsReview v-if="isPm && !!user.team" />
     <SectionHowItWorks v-if="!isPm" />
     <SectionTasks v-if="!isPm && !!user.team" />
     <SectionAchievements v-if="!isPm" />

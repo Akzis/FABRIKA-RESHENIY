@@ -57,6 +57,29 @@ export interface ChallengeTask {
   xp: number
 }
 
+export type SubmissionStatus = 'pending' | 'approved' | 'rejected' | 'partial'
+
+export interface SubmissionAttachment {
+  id: number
+  name: string
+  url: string
+  mime?: string
+  size?: number
+}
+
+export interface ChallengeSubmission {
+  id: number
+  status: SubmissionStatus
+  comment?: string
+  awardedXp?: number
+  reviewNote?: string
+  reviewedAt?: string | null
+  createdAt?: string
+  challenge?: { id: number; title: string; level?: ChallengeTaskLevel; xp?: number } | null
+  participant?: { id: number; name: string } | null
+  attachments: SubmissionAttachment[]
+}
+
 export interface LeaderboardRow {
   rank: number
   userId?: number

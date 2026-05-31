@@ -551,6 +551,61 @@ export interface ApiChallengeLevelChallengeLevel
   };
 }
 
+export interface ApiChallengeSubmissionChallengeSubmission
+  extends Struct.CollectionTypeSchema {
+  collectionName: 'challenge_submissions';
+  info: {
+    description: '\u0421\u0434\u0430\u0447\u0430 \u0447\u0435\u043B\u043B\u0435\u043D\u0434\u0436\u0430 \u0443\u0447\u0430\u0441\u0442\u043D\u0438\u043A\u043E\u043C \u043D\u0430 \u043F\u0440\u043E\u0432\u0435\u0440\u043A\u0443 \u043F\u0440\u043E\u0435\u043A\u0442\u043D\u043E\u043C\u0443 \u043C\u0435\u043D\u0435\u0434\u0436\u0435\u0440\u0443';
+    displayName: 'Challenge Submission';
+    pluralName: 'challenge-submissions';
+    singularName: 'challenge-submission';
+  };
+  options: {
+    draftAndPublish: false;
+  };
+  attributes: {
+    attachments: Schema.Attribute.Media<undefined, true>;
+    awardedXp: Schema.Attribute.Integer &
+      Schema.Attribute.SetMinMax<
+        {
+          min: 0;
+        },
+        number
+      > &
+      Schema.Attribute.DefaultTo<0>;
+    challenge: Schema.Attribute.Relation<
+      'manyToOne',
+      'api::challenge.challenge'
+    >;
+    comment: Schema.Attribute.Text;
+    createdAt: Schema.Attribute.DateTime;
+    createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+    locale: Schema.Attribute.String & Schema.Attribute.Private;
+    localizations: Schema.Attribute.Relation<
+      'oneToMany',
+      'api::challenge-submission.challenge-submission'
+    > &
+      Schema.Attribute.Private;
+    participant: Schema.Attribute.Relation<
+      'manyToOne',
+      'plugin::users-permissions.user'
+    >;
+    publishedAt: Schema.Attribute.DateTime;
+    reviewedAt: Schema.Attribute.DateTime;
+    reviewNote: Schema.Attribute.Text;
+    status: Schema.Attribute.Enumeration<
+      ['pending', 'approved', 'rejected', 'partial']
+    > &
+      Schema.Attribute.Required &
+      Schema.Attribute.DefaultTo<'pending'>;
+    team: Schema.Attribute.Relation<'manyToOne', 'api::team.team'>;
+    updatedAt: Schema.Attribute.DateTime;
+    updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+  };
+}
+
 export interface ApiChallengeChallenge extends Struct.CollectionTypeSchema {
   collectionName: 'challenges';
   info: {
@@ -1336,6 +1391,7 @@ declare module '@strapi/strapi' {
       'api::achievement.achievement': ApiAchievementAchievement;
       'api::badge.badge': ApiBadgeBadge;
       'api::challenge-level.challenge-level': ApiChallengeLevelChallengeLevel;
+      'api::challenge-submission.challenge-submission': ApiChallengeSubmissionChallengeSubmission;
       'api::challenge.challenge': ApiChallengeChallenge;
       'api::daily-quest.daily-quest': ApiDailyQuestDailyQuest;
       'api::how-step.how-step': ApiHowStepHowStep;

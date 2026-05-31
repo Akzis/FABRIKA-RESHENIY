@@ -1,16 +1,40 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, onMounted } from 'vue'
 import type { UserProfile } from '~/types/user'
-import type { ChallengeTask, ChallengeTaskLevel } from '~/types/landing'
+import type { ChallengeTask, ChallengeTaskLevel, SubmissionStatus } from '~/types/landing'
 
 const { challenges, daily } = useLandingData()
 const user = useStrapiUser<UserProfile>()
 const {
   completedChallengeIds,
   completedDailyIds,
-  completeChallenge,
   completeDaily,
 } = useTasks()
+
+// Challenge submissions: clicking a challenge opens a submit modal; the card
+// then reflects the review state (pending / approved / partial / rejected).
+const { byChallenge, fetch: fetchSubmissions } = useSubmissions()
+onMounted(() => { void fetchSubmissions() })
+
+const submitOpen = ref(false)
+const selectedChallenge = ref<ChallengeTask | null>(null)
+
+// Combined per-challenge state. `done` (approved/partial) also flows through
+// completedChallengeIds since the PM review credits completedChallenges.
+type CState = 'open' | 'pending' | 'rejected' | 'done'
+const challengeState = (c: ChallengeTask): CState => {
+  if (isChallengeDone(c)) return 'done'
+  const sub = c.id != null ? byChallenge.value.get(c.id) : undefined
+  const st = sub?.status as SubmissionStatus | undefined
+  if (st === 'approved' || st === 'partial') return 'done'
+  if (st === 'pending') return 'pending'
+  if (st === 'rejected') return 'rejected'
+  return 'open'
+}
+const isClickable = (c: ChallengeTask) => {
+  const s = challengeState(c)
+  return s === 'open' || s === 'rejected'
+}
 
 const streak = computed(() => user.value?.streak ?? 0)
 
@@ -91,12 +115,15 @@ const celebrate = async (el: HTMLElement | null, text: string) => {
   )
 }
 
-// ── click-to-complete ──────────────────────────────────────────────────
-const onChallengeClick = async (e: MouseEvent, c: ChallengeTask) => {
-  if (!c.id || isChallengeDone(c) || isBusy('c' + c.id)) return
-  const card = e.currentTarget as HTMLElement
-  const ok = await runComplete('c' + c.id, () => completeChallenge(c.id))
-  if (ok) await celebrate(card, `+${c.xp} XP`)
+// ── click-to-submit (challenges now go through PM review) ───────────────
+const onChallengeClick = (_e: MouseEvent, c: ChallengeTask) => {
+  if (!c.id || !isClickable(c)) return
+  selectedChallenge.value = c
+  submitOpen.value = true
+}
+const onSubmitted = async () => {
+  // refresh so the card flips to "На проверке" immediately
+  await fetchSubmissions()
 }
 
 const onDailyClick = async (e: MouseEvent, q: { id?: number; points: number }) => {
@@ -184,13 +211,17 @@ useReveal('.tasks-reveal', { stagger: 0.16, y: 50, scale: 0.97, blur: 4, duratio
               v-for="(c, i) in filteredChallenges"
               :key="c.id ?? i"
               role="button"
-              :aria-disabled="isChallengeDone(c)"
+              :aria-disabled="!isClickable(c)"
               @click="onChallengeClick($event, c)"
               :class="[
                 'task-card relative overflow-hidden border rounded-xl bg-bg-3 p-4 transition-[border-color,transform,opacity] duration-200 select-none',
-                isChallengeDone(c)
+                challengeState(c) === 'done'
                   ? 'border-mint-brand/40 opacity-70 cursor-default'
-                  : 'border-line hover:border-cyan-brand hover:-translate-y-0.5 cursor-pointer active:scale-[0.99]',
+                  : challengeState(c) === 'pending'
+                    ? 'border-cyan-brand/40 opacity-80 cursor-default'
+                    : challengeState(c) === 'rejected'
+                      ? 'border-[rgba(255,117,117,0.4)] hover:border-[#ff7575] hover:-translate-y-0.5 cursor-pointer active:scale-[0.99]'
+                      : 'border-line hover:border-cyan-brand hover:-translate-y-0.5 cursor-pointer active:scale-[0.99]',
               ]"
             >
               <div class="flex items-start gap-3.5">
@@ -198,7 +229,7 @@ useReveal('.tasks-reveal', { stagger: 0.16, y: 50, scale: 0.97, blur: 4, duratio
                   {{ levelMeta[c.level].label }}
                 </span>
                 <div class="flex-1 min-w-0">
-                  <div :class="['text-sm font-semibold', isChallengeDone(c) ? 'text-ink-3 line-through' : 'text-ink']">{{ c.title }}</div>
+                  <div :class="['text-sm font-semibold', challengeState(c) === 'done' ? 'text-ink-3 line-through' : 'text-ink']">{{ c.title }}</div>
                   <p v-if="c.description" class="m-0 mt-1 text-[13px] leading-relaxed text-ink-3">{{ c.description }}</p>
                 </div>
                 <div class="shrink-0 text-right">
@@ -206,11 +237,15 @@ useReveal('.tasks-reveal', { stagger: 0.16, y: 50, scale: 0.97, blur: 4, duratio
                   <div
                     :class="[
                       'mt-2 font-mono text-[10px] tracking-[0.1em] uppercase inline-flex items-center gap-1.5 justify-end',
-                      isChallengeDone(c) ? 'text-mint-brand' : 'text-ink-3',
+                      challengeState(c) === 'done' ? 'text-mint-brand'
+                        : challengeState(c) === 'pending' ? 'text-cyan-brand'
+                        : challengeState(c) === 'rejected' ? 'text-[#ff7575]'
+                        : 'text-ink-3',
                     ]"
                   >
-                    <template v-if="isBusy('c' + c.id)">…</template>
-                    <template v-else-if="isChallengeDone(c)">✓ Выполнено</template>
+                    <template v-if="challengeState(c) === 'done'">Выполнено</template>
+                    <template v-else-if="challengeState(c) === 'pending'">На проверке</template>
+                    <template v-else-if="challengeState(c) === 'rejected'">Отклонено | сдать снова</template>
                     <template v-else>Выполнить <span class="text-cyan-brand">→</span></template>
                   </div>
                 </div>
@@ -307,5 +342,12 @@ useReveal('.tasks-reveal', { stagger: 0.16, y: 50, scale: 0.97, blur: 4, duratio
         </div>
       </div>
     </div>
+
+    <ChallengeSubmitModal
+      v-if="submitOpen"
+      :challenge="selectedChallenge"
+      @close="submitOpen = false"
+      @submitted="onSubmitted"
+    />
   </section>
 </template>

@@ -18,6 +18,10 @@ const hasTeam = computed(() => !!(user.value as any)?.team)
 const pmHidden = new Set(['#how', '#tasks'])
 const links = computed(() => {
   let ls = isPm.value ? allLinks.filter(l => !pmHidden.has(l.href)) : allLinks
+  // PMs get "Команда" + "Проверка" entries for their management views.
+  if (isPm.value && hasTeam.value) {
+    ls = [{ href: '#team', label: 'Команда' }, { href: '#review', label: 'Проверка' }, ...ls]
+  }
   // Tasks section is hidden for participants without a team.
   if (!isPm.value && !hasTeam.value) ls = ls.filter(l => l.href !== '#tasks')
   return ls

@@ -109,7 +109,13 @@ const switchMode = (m: Mode) => {
       <div class="scene-blob absolute rounded-full blur-[120px] opacity-30 w-[460px] h-[460px] bg-cyan-brand -top-20 -right-20 pointer-events-none"></div>
       <div class="scene-blob absolute rounded-full blur-[120px] opacity-25 w-[420px] h-[420px] bg-purple-brand -bottom-32 -left-20 pointer-events-none"></div>
 
-      <div class="relative w-full max-w-[460px] bg-bg-2 border border-line-strong rounded-[22px] p-10 shadow-[0_30px_80px_rgba(0,0,0,0.4)]">
+      <!-- floating voxel decorations (smooth wiggle) — hidden on small screens -->
+      <img src="/voxel/gamepad.png" alt="" aria-hidden="true" class="voxel-deco hidden md:block absolute top-[9%] right-[9%] h-40 [image-rendering:pixelated]" style="animation-duration:5.5s;animation-delay:0s" />
+      <img src="/voxel/keycaps.png" alt="" aria-hidden="true" class="voxel-deco hidden md:block absolute top-[12%] left-[8%] h-36 [image-rendering:pixelated]" style="animation-duration:6.5s;animation-delay:.8s" />
+      <img src="/voxel/dino.png"    alt="" aria-hidden="true" class="voxel-deco hidden md:block absolute bottom-[10%] left-[10%] h-44 [image-rendering:pixelated]" style="animation-duration:6s;animation-delay:.4s" />
+      <img src="/voxel/chat.png"    alt="" aria-hidden="true" class="voxel-deco hidden md:block absolute bottom-[12%] right-[10%] h-36 [image-rendering:pixelated]" style="animation-duration:5s;animation-delay:1.1s" />
+
+      <div class="relative z-10 w-full max-w-[460px] bg-bg-2 border border-line-strong rounded-[22px] p-10 shadow-[0_30px_80px_rgba(0,0,0,0.4)]">
         <div class="grid grid-cols-2 gap-2 p-1 bg-bg-3 rounded-xl mb-7">
           <button
             type="button"
@@ -235,3 +241,28 @@ const switchMode = (m: Mode) => {
     </main>
   </div>
 </template>
+
+<style scoped>
+.voxel-deco {
+  z-index: 0;
+  opacity: 0.9;
+  pointer-events: none;
+  user-select: none;
+  filter: drop-shadow(0 12px 26px rgba(0, 0, 0, 0.5));
+  transform-origin: center;
+  animation-name: voxelJitter;
+  animation-timing-function: ease-in-out;
+  animation-iteration-count: infinite;
+  will-change: transform;
+}
+
+/* smooth float + gentle sway so the pieces feel alive without jitter */
+@keyframes voxelJitter {
+  0%, 100% { transform: translateY(0) rotate(-5deg); }
+  50%      { transform: translateY(-16px) rotate(5deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .voxel-deco { animation: none; }
+}
+</style>

@@ -1,0 +1,43 @@
+{
+  "kind": "collectionType",
+  "collectionName": "challenge_submissions",
+  "info": {
+    "singularName": "challenge-submission",
+    "pluralName": "challenge-submissions",
+    "displayName": "Challenge Submission",
+    "description": "Сдача челленджа участником на проверку проектному менеджеру"
+  },
+  "options": { "draftAndPublish": false },
+  "attributes": {
+    "challenge": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "api::challenge.challenge"
+    },
+    "participant": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "plugin::users-permissions.user"
+    },
+    "team": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "api::team.team"
+    },
+    "comment": { "type": "text" },
+    "attachments": {
+      "type": "media",
+      "multiple": true,
+      "required": false
+    },
+    "status": {
+      "type": "enumeration",
+      "enum": ["pending", "approved", "rejected", "partial"],
+      "default": "pending",
+      "required": true
+    },
+    "awardedXp": { "type": "integer", "default": 0, "min": 0 },
+    "reviewNote": { "type": "text" },
+    "reviewedAt": { "type": "datetime" }
+  }
+}

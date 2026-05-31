@@ -63,6 +63,11 @@ async function grantAuthenticatedSelf(strapi: any) {
     'plugin::users-permissions.user.setRole',
     'plugin::users-permissions.user.setAvatar',
     'plugin::users-permissions.user.completeTask',
+    'plugin::users-permissions.user.submitChallenge',
+    'plugin::users-permissions.user.listSubmissions',
+    'plugin::users-permissions.user.reviewSubmission',
+    'plugin::users-permissions.user.getTeam',
+    'plugin::users-permissions.user.renameTeam',
     'plugin::users-permissions.user.createInvite',
     'plugin::users-permissions.user.joinTeam',
     'api::daily-quest.daily-quest.find',
@@ -81,7 +86,18 @@ async function publishCreated(strapi: any, uid: string, doc: any) {
   }
 }
 
+// True only when the content-type actually exists in this build. Guards the
+// seeders so a stale UID (e.g. a removed `api::hero.hero`) is skipped instead
+// of throwing and aborting every later seed.
+function hasType(strapi: any, uid: string): boolean {
+  return !!strapi.contentTypes?.[uid]
+}
+
 async function seedIfEmpty(strapi: any, uid: string, rows: any[]) {
+  if (!hasType(strapi, uid)) {
+    strapi.log.warn(`[bootstrap] skip seeding ${uid}: content-type not found`)
+    return
+  }
   const count = await strapi.documents(uid).count({})
   if (count > 0) return
   for (const data of rows) {
@@ -92,6 +108,10 @@ async function seedIfEmpty(strapi: any, uid: string, rows: any[]) {
 }
 
 async function seedSingleIfEmpty(strapi: any, uid: string, data: any) {
+  if (!hasType(strapi, uid)) {
+    strapi.log.warn(`[bootstrap] skip seeding ${uid}: content-type not found`)
+    return
+  }
   const existing = await strapi.documents(uid).findFirst({})
   if (existing) return
   const created = await strapi.documents(uid).create({ data })
@@ -122,15 +142,24 @@ export default {
       strapi.log.warn(`[bootstrap] could not grant permissions: ${e?.message ?? e}`)
     }
 
+    // Each seed is isolated so one failure (or a removed content-type) doesn't
+    // block the others — challenges in particular must always get a chance to seed.
+    const seeds: Array<() => Promise<void>> = [
+      () => seedSingleIfEmpty(strapi, 'api::hero.hero', seedHero),
+      () => seedIfEmpty(strapi, 'api::how-step.how-step', seedHowSteps),
+      () => seedIfEmpty(strapi, 'api::challenge-level.challenge-level', seedLevels),
+      () => seedIfEmpty(strapi, 'api::badge.badge', seedBadges),
+      () => seedIfEmpty(strapi, 'api::achievement.achievement', seedAchievements),
+      () => seedIfEmpty(strapi, 'api::daily-quest.daily-quest', seedDaily),
+      () => seedIfEmpty(strapi, 'api::challenge.challenge', seedChallenges),
+      () => seedIfEmpty(strapi, 'api::role-card.role-card', seedRoles),
+    ]
     try {
-      await seedSingleIfEmpty(strapi, 'api::hero.hero', seedHero)
-      await seedIfEmpty(strapi, 'api::how-step.how-step', seedHowSteps)
-      await seedIfEmpty(strapi, 'api::challenge-level.challenge-level', seedLevels)
-      await seedIfEmpty(strapi, 'api::badge.badge', seedBadges)
-      await seedIfEmpty(strapi, 'api::achievement.achievement', seedAchievements)
-      await seedIfEmpty(strapi, 'api::daily-quest.daily-quest', seedDaily)
-      await seedIfEmpty(strapi, 'api::challenge.challenge', seedChallenges)
-      await seedIfEmpty(strapi, 'api::role-card.role-card', seedRoles)
+      for (const run of seeds) {
+        try { await run() } catch (e: any) {
+          strapi.log.warn(`[bootstrap] a seed failed: ${e?.message ?? e}`)
+        }
+      }
     } catch (e: any) {
       strapi.log.warn(`[bootstrap] seeding failed: ${e?.message ?? e}`)
     }
