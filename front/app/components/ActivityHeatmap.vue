@@ -31,11 +31,16 @@ interface Cell {
 }
 interface Week {
   cells: (Cell | null)[]
-  monthLabel: string | null
+}
+// One label per month, sized to exactly the weeks it spans — so the text can
+// never overlap a neighbouring month's label.
+interface MonthSeg {
+  label: string
+  weeks: number
 }
 
-const grid = computed<Week[]>(() => {
-  if (!props.from || !props.to) return []
+const grid = computed<{ weeks: Week[]; months: MonthSeg[] }>(() => {
+  if (!props.from || !props.to) return { weeks: [], months: [] }
   const from = props.from
   const to = props.to
   const end = toDate(to)
@@ -45,16 +50,18 @@ const grid = computed<Week[]>(() => {
   start.setUTCDate(start.getUTCDate() - dow(start))
 
   const weeks: Week[] = []
+  const months: MonthSeg[] = []
   let cur = new Date(start)
-  let lastLabeledMonth = -1
+  let curMonth = -1
 
   while (cur <= end) {
-    // Month label: when this week's Monday falls in a new month.
+    // Group weeks into month segments by the week's Monday.
     const weekMonth = cur.getUTCMonth()
-    let monthLabel: string | null = null
-    if (weekMonth !== lastLabeledMonth) {
-      monthLabel = MONTHS[weekMonth]!
-      lastLabeledMonth = weekMonth
+    if (weekMonth !== curMonth) {
+      months.push({ label: MONTHS[weekMonth]!, weeks: 1 })
+      curMonth = weekMonth
+    } else {
+      months[months.length - 1]!.weeks++
     }
 
     const cells: (Cell | null)[] = []
@@ -69,9 +76,9 @@ const grid = computed<Week[]>(() => {
       }
       cur = new Date(cur.getTime() + MS)
     }
-    weeks.push({ cells, monthLabel })
+    weeks.push({ cells })
   }
-  return weeks
+  return { weeks, months }
 })
 
 const tip = (c: Cell) =>
@@ -95,13 +102,18 @@ const tip = (c: Cell) =>
       </div>
 
       <div class="hm-cols">
-        <!-- month labels -->
+        <!-- month labels: each spans exactly the weeks of its month -->
         <div class="hm-months" aria-hidden="true">
-          <span v-for="(w, i) in grid" :key="'m' + i" class="hm-month">{{ w.monthLabel || '' }}</span>
+          <span
+            v-for="(seg, i) in grid.months"
+            :key="'m' + i"
+            class="hm-month"
+            :style="{ width: `calc((var(--hm-cell) + var(--hm-gap)) * ${seg.weeks})` }"
+          >{{ seg.weeks >= 2 ? seg.label : '' }}</span>
         </div>
         <!-- week columns -->
         <div class="hm-weeks">
-          <div v-for="(w, i) in grid" :key="i" class="hm-week">
+          <div v-for="(w, i) in grid.weeks" :key="i" class="hm-week">
             <span
               v-for="(c, j) in w.cells"
               :key="j"
@@ -159,12 +171,11 @@ const tip = (c: Cell) =>
   margin-bottom: 2px;
 }
 .hm-month {
-  width: calc(var(--hm-cell) + var(--hm-gap));
   font-size: 9px;
   letter-spacing: .04em;
   color: var(--color-ink-3);
   white-space: nowrap;
-  overflow: visible;
+  overflow: hidden;
   flex-shrink: 0;
 }
 .hm-weeks {
