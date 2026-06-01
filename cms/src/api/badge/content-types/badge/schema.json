@@ -10,14 +10,37 @@
   "options": { "draftAndPublish": true },
   "attributes": {
     "order": { "type": "integer", "default": 1 },
-    "symbol": { "type": "string", "required": true },
+    "code": { "type": "string", "unique": true },
     "label": { "type": "string", "required": true },
+    "image": {
+      "type": "media",
+      "multiple": false,
+      "required": false,
+      "allowedTypes": ["images"]
+    },
     "accent": {
       "type": "enumeration",
       "enum": ["cyan", "mint", "purple"],
       "default": "cyan"
     },
     "got": { "type": "boolean", "default": false },
-    "locked": { "type": "boolean", "default": false }
+    "locked": { "type": "boolean", "default": false },
+    "conditionType": {
+      "type": "enumeration",
+      "enum": [
+        "none",
+        "first_light_challenge",
+        "first_medium_challenge",
+        "first_hard_challenge",
+        "reach_level",
+        "complete_dailies",
+        "streak_days",
+        "complete_challenges"
+      ],
+      "default": "none"
+    },
+    "conditionValue": { "type": "integer", "default": 0, "min": 0 },
+    "xpReward": { "type": "integer", "default": 0, "min": 0 },
+    "rewardImage": { "type": "string" }
   }
 }

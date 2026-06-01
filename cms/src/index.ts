@@ -1,6 +1,5 @@
 // import type { Core } from '@strapi/strapi';
 import {
-  seedAchievements,
   seedBadges,
   seedChallenges,
   seedDaily,
@@ -8,6 +7,7 @@ import {
   seedHowSteps,
   seedLevels,
   seedRoles,
+  seedShopItems,
 } from './seed-data'
 
 // Content types that the landing reads from. On every boot we make sure
@@ -18,9 +18,9 @@ const PUBLIC_TYPES: { uid: string; actions: ('find' | 'findOne')[] }[] = [
   { uid: 'api::how-step.how-step', actions: ['find', 'findOne'] },
   { uid: 'api::challenge-level.challenge-level', actions: ['find', 'findOne'] },
   { uid: 'api::badge.badge', actions: ['find', 'findOne'] },
-  { uid: 'api::achievement.achievement', actions: ['find', 'findOne'] },
   { uid: 'api::daily-quest.daily-quest', actions: ['find', 'findOne'] },
   { uid: 'api::challenge.challenge', actions: ['find', 'findOne'] },
+  { uid: 'api::shop-item.shop-item', actions: ['find', 'findOne'] },
   { uid: 'api::role-card.role-card', actions: ['find', 'findOne'] },
 ]
 
@@ -62,16 +62,20 @@ async function grantAuthenticatedSelf(strapi: any) {
     'plugin::users-permissions.user.find',
     'plugin::users-permissions.user.setRole',
     'plugin::users-permissions.user.setAvatar',
+    'plugin::users-permissions.user.setProfileHeader',
     'plugin::users-permissions.user.completeTask',
     'plugin::users-permissions.user.submitChallenge',
     'plugin::users-permissions.user.listSubmissions',
     'plugin::users-permissions.user.reviewSubmission',
     'plugin::users-permissions.user.getTeam',
     'plugin::users-permissions.user.renameTeam',
+    'plugin::users-permissions.user.removeMember',
     'plugin::users-permissions.user.createInvite',
     'plugin::users-permissions.user.joinTeam',
     'api::daily-quest.daily-quest.find',
     'api::daily-quest.daily-quest.findOne',
+    // teams count for the hero stats (total number of teams)
+    'api::team.team.find',
   ])
 }
 
@@ -119,6 +123,33 @@ async function seedSingleIfEmpty(strapi: any, uid: string, data: any) {
   strapi.log.info(`[bootstrap] seeded singleton ${uid}`)
 }
 
+// Badges seeded before rewards existed have empty xpReward/rewardImage. Backfill
+// those (matched by `code`) so the reward system works without a manual re-seed.
+// Only fills blanks — deliberate admin edits to a non-zero reward are preserved.
+async function backfillBadgeRewards(strapi: any) {
+  if (!hasType(strapi, 'api::badge.badge')) return
+  for (const seed of seedBadges as any[]) {
+    if (!seed.code) continue
+    const rows = await strapi.documents('api::badge.badge').findMany({
+      filters: { code: seed.code }, limit: 1,
+    })
+    const badge = rows?.[0]
+    if (!badge) continue
+    const needsImage = !badge.rewardImage && seed.rewardImage
+    const needsXp = !Number(badge.xpReward) && Number(seed.xpReward)
+    if (!needsImage && !needsXp) continue
+    const updated = await strapi.documents('api::badge.badge').update({
+      documentId: badge.documentId,
+      data: {
+        ...(needsImage ? { rewardImage: seed.rewardImage } : {}),
+        ...(needsXp ? { xpReward: seed.xpReward } : {}),
+      },
+    })
+    await publishCreated(strapi, 'api::badge.badge', updated)
+    strapi.log.info(`[bootstrap] backfilled rewards for badge ${seed.code}`)
+  }
+}
+
 export default {
   /**
    * An asynchronous register function that runs before
@@ -149,9 +180,9 @@ export default {
       () => seedIfEmpty(strapi, 'api::how-step.how-step', seedHowSteps),
       () => seedIfEmpty(strapi, 'api::challenge-level.challenge-level', seedLevels),
       () => seedIfEmpty(strapi, 'api::badge.badge', seedBadges),
-      () => seedIfEmpty(strapi, 'api::achievement.achievement', seedAchievements),
       () => seedIfEmpty(strapi, 'api::daily-quest.daily-quest', seedDaily),
       () => seedIfEmpty(strapi, 'api::challenge.challenge', seedChallenges),
+      () => seedIfEmpty(strapi, 'api::shop-item.shop-item', seedShopItems),
       () => seedIfEmpty(strapi, 'api::role-card.role-card', seedRoles),
     ]
     try {
@@ -162,6 +193,10 @@ export default {
       }
     } catch (e: any) {
       strapi.log.warn(`[bootstrap] seeding failed: ${e?.message ?? e}`)
+    }
+
+    try { await backfillBadgeRewards(strapi) } catch (e: any) {
+      strapi.log.warn(`[bootstrap] badge reward backfill failed: ${e?.message ?? e}`)
     }
   },
 }

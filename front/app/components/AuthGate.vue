@@ -91,6 +91,14 @@ const switchMode = (m: Mode) => {
 
 <template>
   <div class="min-h-screen flex flex-col">
+    <!-- roaming voxel cursor that drifts across the whole page in the background -->
+    <img
+      src="/voxel/arrow.png"
+      alt=""
+      aria-hidden="true"
+      class="voxel-cursor [image-rendering:pixelated]"
+    />
+
     <header class="border-b border-line" style="background: var(--color-nav-bg)">
       <div class="max-w-[1320px] mx-auto px-8 flex items-center justify-between h-[72px]">
         <div class="flex items-center gap-3">
@@ -108,12 +116,6 @@ const switchMode = (m: Mode) => {
 
       <div class="scene-blob absolute rounded-full blur-[120px] opacity-30 w-[460px] h-[460px] bg-cyan-brand -top-20 -right-20 pointer-events-none"></div>
       <div class="scene-blob absolute rounded-full blur-[120px] opacity-25 w-[420px] h-[420px] bg-purple-brand -bottom-32 -left-20 pointer-events-none"></div>
-
-      <!-- floating voxel decorations (smooth wiggle) — hidden on small screens -->
-      <img src="/voxel/gamepad.png" alt="" aria-hidden="true" class="voxel-deco hidden md:block absolute top-[9%] right-[9%] h-40 [image-rendering:pixelated]" style="animation-duration:5.5s;animation-delay:0s" />
-      <img src="/voxel/keycaps.png" alt="" aria-hidden="true" class="voxel-deco hidden md:block absolute top-[12%] left-[8%] h-36 [image-rendering:pixelated]" style="animation-duration:6.5s;animation-delay:.8s" />
-      <img src="/voxel/dino.png"    alt="" aria-hidden="true" class="voxel-deco hidden md:block absolute bottom-[10%] left-[10%] h-44 [image-rendering:pixelated]" style="animation-duration:6s;animation-delay:.4s" />
-      <img src="/voxel/chat.png"    alt="" aria-hidden="true" class="voxel-deco hidden md:block absolute bottom-[12%] right-[10%] h-36 [image-rendering:pixelated]" style="animation-duration:5s;animation-delay:1.1s" />
 
       <div class="relative z-10 w-full max-w-[460px] bg-bg-2 border border-line-strong rounded-[22px] p-10 shadow-[0_30px_80px_rgba(0,0,0,0.4)]">
         <div class="grid grid-cols-2 gap-2 p-1 bg-bg-3 rounded-xl mb-7">
@@ -264,5 +266,38 @@ const switchMode = (m: Mode) => {
 
 @media (prefers-reduced-motion: reduce) {
   .voxel-deco { animation: none; }
+}
+
+/* a lone voxel cursor that wanders the whole page in the background */
+.voxel-cursor {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 120px;
+  height: auto;
+  z-index: 0;
+  opacity: 0.5;
+  pointer-events: none;
+  user-select: none;
+  filter: drop-shadow(0 8px 18px rgba(0, 0, 0, 0.45));
+  will-change: transform;
+  animation: voxelCursorRoam 28s ease-in-out infinite;
+}
+
+/* drift across the viewport using vw/vh so it covers the full page,
+   with little tilts so it feels like it's being "moved" by hand */
+@keyframes voxelCursorRoam {
+  0%   { transform: translate(8vw, 18vh) rotate(-8deg); }
+  15%  { transform: translate(72vw, 12vh) rotate(6deg); }
+  30%  { transform: translate(85vw, 65vh) rotate(-4deg); }
+  45%  { transform: translate(40vw, 80vh) rotate(10deg); }
+  60%  { transform: translate(12vw, 60vh) rotate(-6deg); }
+  75%  { transform: translate(55vw, 35vh) rotate(4deg); }
+  90%  { transform: translate(80vw, 22vh) rotate(-8deg); }
+  100% { transform: translate(8vw, 18vh) rotate(-8deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .voxel-cursor { animation: none; }
 }
 </style>

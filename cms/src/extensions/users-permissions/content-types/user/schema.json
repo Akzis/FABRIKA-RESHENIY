@@ -92,6 +92,7 @@
     "level": { "type": "integer", "default": 1, "min": 1 },
     "xpToNextLevel": { "type": "integer", "default": 250, "min": 1 },
     "streak": { "type": "integer", "default": 0, "min": 0 },
+    "lastDailyDate": { "type": "date" },
     "challengesClosed": { "type": "integer", "default": 0, "min": 0 },
     "badgesCount": { "type": "integer", "default": 0, "min": 0 },
     "teamCupPlace": { "type": "integer", "default": 0, "min": 0 },
@@ -111,6 +112,9 @@
       "type": "relation",
       "relation": "manyToMany",
       "target": "api::badge.badge"
+    },
+    "profileHeader": {
+      "type": "json"
     },
     "profileActivated": { "type": "boolean", "default": false }
   }

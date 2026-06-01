@@ -45,19 +45,7 @@ const levelMeta: Record<ChallengeTaskLevel, { label: string; badge: string; dot:
   hard:   { label: 'HARD',   badge: 'text-purple-brand border-[rgba(181,89,243,0.4)] bg-[rgba(181,89,243,0.08)]', dot: 'bg-purple-brand' },
 }
 
-const filters = [
-  { key: 'all', label: 'Все' },
-  { key: 'light', label: 'LIGHT' },
-  { key: 'medium', label: 'MEDIUM' },
-  { key: 'hard', label: 'HARD' },
-] as const
-const activeFilter = ref<'all' | ChallengeTaskLevel>('all')
-
-const filteredChallenges = computed<ChallengeTask[]>(() =>
-  activeFilter.value === 'all'
-    ? challenges.value
-    : challenges.value.filter(c => c.level === activeFilter.value),
-)
+const visibleChallenges = computed<ChallengeTask[]>(() => challenges.value)
 
 const isChallengeDone = (c: ChallengeTask) => c.id != null && completedChallengeIds.value.has(c.id)
 const isDailyDone = (q: { id?: number }) => q.id != null && completedDailyIds.value.has(q.id)
@@ -192,23 +180,11 @@ useReveal('.tasks-reveal', { stagger: 0.16, y: 50, scale: 0.97, blur: 4, duratio
             <h4 class="font-mono text-[11px] tracking-[0.14em] text-ink-3 uppercase m-0 flex items-center gap-2.5 before:content-[''] before:w-2 before:h-2 before:bg-cyan-brand">
               Челленджи
             </h4>
-            <div class="flex gap-1.5 p-1 bg-bg-3 rounded-xl">
-              <button
-                v-for="f in filters"
-                :key="f.key"
-                type="button"
-                @click="activeFilter = f.key"
-                :class="[
-                  'px-3 py-1.5 rounded-lg font-mono text-[10px] tracking-[0.1em] uppercase transition-colors duration-150',
-                  activeFilter === f.key ? 'bg-cyan-brand text-btn-ink' : 'text-ink-3 hover:text-ink-2',
-                ]"
-              >{{ f.label }}</button>
-            </div>
           </div>
 
           <div class="flex flex-col gap-3">
             <div
-              v-for="(c, i) in filteredChallenges"
+              v-for="(c, i) in visibleChallenges"
               :key="c.id ?? i"
               role="button"
               :aria-disabled="!isClickable(c)"
@@ -252,8 +228,8 @@ useReveal('.tasks-reveal', { stagger: 0.16, y: 50, scale: 0.97, blur: 4, duratio
               </div>
             </div>
 
-            <p v-if="!filteredChallenges.length" class="text-sm text-ink-3 py-6 text-center">
-              Заданий этого уровня пока нет.
+            <p v-if="!visibleChallenges.length" class="text-sm text-ink-3 py-6 text-center">
+              Челленджей пока нет.
             </p>
           </div>
         </div>

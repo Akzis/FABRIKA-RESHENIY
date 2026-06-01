@@ -12,6 +12,10 @@ type Kind = 'challenge' | 'daily'
 const localChallenges = ref<Set<number>>(new Set())
 const localDaily = ref<Set<number>>(new Set())
 
+/** Badges the backend just granted on the last completion — for a toast/popup. */
+export interface AwardedBadge { id: number; code?: string; label: string }
+const lastAwardedBadges = ref<AwardedBadge[]>([])
+
 export function useTasks() {
   const strapiBase = (useRuntimeConfig().public as any)?.strapi?.url ?? 'http://localhost:1337'
   const token = useStrapiToken()
@@ -35,11 +39,15 @@ export function useTasks() {
     const local = kind === 'challenge' ? localChallenges : localDaily
     if (local.value.has(id)) return false
     try {
-      await $fetch(`${strapiBase}/api/users/me/tasks/complete`, {
-        method: 'POST',
-        body: { kind, id },
-        headers: { Authorization: `Bearer ${token.value}` },
-      })
+      const res = await $fetch<{ awardedBadges?: AwardedBadge[] }>(
+        `${strapiBase}/api/users/me/tasks/complete`,
+        {
+          method: 'POST',
+          body: { kind, id },
+          headers: { Authorization: `Bearer ${token.value}` },
+        },
+      )
+      lastAwardedBadges.value = res?.awardedBadges ?? []
       // lock it immediately (reactive Set replace), then refresh xp/server state
       local.value = new Set(local.value).add(id)
       await fetchUser()
@@ -52,6 +60,7 @@ export function useTasks() {
   return {
     completedChallengeIds,
     completedDailyIds,
+    lastAwardedBadges,
     completeChallenge: (id?: number) => complete('challenge', id),
     completeDaily: (id?: number) => complete('daily', id),
   }

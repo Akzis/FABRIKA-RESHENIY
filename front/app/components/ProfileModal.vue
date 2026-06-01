@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import type { UserProfile } from '~/types/user'
 
 interface Props {
@@ -11,6 +11,9 @@ const emit = defineEmits<{ (e: 'close'): void }>()
 
 const user = useStrapiUser() as unknown as { value: UserProfile | null }
 const u = computed(() => user.value)
+const strapiBase = (useRuntimeConfig().public as any)?.strapi?.url ?? 'http://localhost:1337'
+const token = useStrapiToken()
+const { fetchUser } = useStrapiAuth()
 
 const displayName = computed(() => u.value?.displayName || u.value?.username || 'Игрок')
 const username    = computed(() => u.value?.username ?? '—')
@@ -40,6 +43,395 @@ const challengesClosed = computed(() => u.value?.challengesClosed ?? 0)
 const badgesCount      = computed(() => u.value?.earnedBadges?.length ?? u.value?.badgesCount ?? 0)
 
 const fmt = (n: number) => n.toLocaleString('ru-RU').replace(/,/g, ' ')
+
+interface ProfileHeaderSettings {
+  color: string
+  image: string
+  imageX: number
+  imageY: number
+  imageSize: number
+}
+
+const defaultHeaderSettings: ProfileHeaderSettings = {
+  color: '#d9fbff',
+  image: '/voxel/dino.png',
+  imageX: 82,
+  imageY: 50,
+  imageSize: 104,
+}
+
+const headerColorPresets = ['#d9fbff', '#f6e9ff', '#e8fff6', '#fff5d9', '#202335', '#111827']
+
+// Profile pictures are unlocked by earning badges. Everyone starts with the
+// starter picture; every other picture is the reward of a specific badge.
+const STARTER_IMAGE = '/voxel/dino.png'
+
+interface HeaderImageOption {
+  src: string
+  label: string
+  unlocked: boolean
+  badgeLabel?: string
+}
+
+// All badges that reward a profile picture (label, rewardImage) — fetched from
+// Strapi so the catalog stays in sync with the achievements.
+const rewardBadges = ref<{ label: string; rewardImage: string }[]>([])
+
+// Pictures the user has unlocked = starter + reward pictures of earned badges.
+// Matched by rewardImage (stable), not numeric id (draft/published differ).
+// The PM gets every picture unlocked — they don't earn badges themselves.
+const unlockedImages = computed(() => {
+  const s = new Set<string>(['', STARTER_IMAGE])
+  if (isPm.value) {
+    for (const b of rewardBadges.value) s.add(b.rewardImage)
+    return s
+  }
+  for (const b of u.value?.earnedBadges ?? []) {
+    if (typeof b.rewardImage === 'string' && b.rewardImage) s.add(b.rewardImage)
+  }
+  return s
+})
+
+const loadRewardBadges = async () => {
+  try {
+    const res = await $fetch<{ data?: any[] }>(`${strapiBase}/api/badges`, {
+      params: { 'fields[0]': 'label', 'fields[1]': 'rewardImage', 'sort[0]': 'order:asc' },
+    })
+    rewardBadges.value = (res?.data ?? [])
+      .filter((b: any) => typeof b.rewardImage === 'string' && b.rewardImage)
+      .map((b: any) => ({ label: b.label, rewardImage: b.rewardImage }))
+  } catch { /* keep empty — only starter/none available */ }
+}
+
+const headerImages = computed<HeaderImageOption[]>(() => [
+  { src: '', label: 'Нет', unlocked: true },
+  { src: STARTER_IMAGE, label: 'Стартовая', unlocked: true },
+  ...rewardBadges.value.map(b => ({
+    src: b.rewardImage,
+    label: b.label,
+    unlocked: unlockedImages.value.has(b.rewardImage),
+    badgeLabel: b.label,
+  })),
+])
+const isImageUnlocked = (src: string) => unlockedImages.value.has(src)
+
+const profileHeader = ref<ProfileHeaderSettings>({ ...defaultHeaderSettings })
+const headerRef = ref<HTMLElement | null>(null)
+
+// Customizer can be collapsed so the profile card stays compact by default.
+const customizerOpen = ref(false)
+const customizerStorageKey = computed(() => `fr-profile-customizer-open:${u.value?.id ?? u.value?.username ?? 'guest'}`)
+const loadCustomizerOpen = () => {
+  if (!import.meta.client) return
+  customizerOpen.value = window.localStorage.getItem(customizerStorageKey.value) === '1'
+}
+const toggleCustomizer = () => {
+  customizerOpen.value = !customizerOpen.value
+  if (import.meta.client) {
+    window.localStorage.setItem(customizerStorageKey.value, customizerOpen.value ? '1' : '0')
+  }
+}
+
+// GSAP-driven expand/collapse for the customizer. Height tweens to/from the
+// content's natural size; the inner block slides + fades for a softer reveal.
+const onCustomizerEnter = async (el: Element, done: () => void) => {
+  const gsap = await loadGsap()
+  const inner = el.querySelector('.pm-customizer-inner')
+  const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+  if (reduced) {
+    gsap.set(el, { height: 'auto', opacity: 1 })
+    if (inner) gsap.set(inner, { y: 0, autoAlpha: 1 })
+    done()
+    return
+  }
+  gsap.set(el, { overflow: 'hidden' })
+  gsap.fromTo(
+    el,
+    { height: 0, opacity: 0, marginTop: 0 },
+    {
+      height: 'auto',
+      opacity: 1,
+      marginTop: 12,
+      duration: 0.5,
+      ease: 'power3.out',
+      clearProps: 'height,overflow',
+      onComplete: done,
+    },
+  )
+  if (inner) {
+    gsap.fromTo(
+      inner,
+      { y: -12, autoAlpha: 0 },
+      { y: 0, autoAlpha: 1, duration: 0.55, ease: 'power3.out', delay: 0.05 },
+    )
+  }
+}
+
+const onCustomizerLeave = async (el: Element, done: () => void) => {
+  const gsap = await loadGsap()
+  const inner = el.querySelector('.pm-customizer-inner')
+  const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+  if (reduced) { done(); return }
+  gsap.set(el, { overflow: 'hidden' })
+  const tl = gsap.timeline({ onComplete: done })
+  if (inner) tl.to(inner, { y: -8, autoAlpha: 0, duration: 0.22, ease: 'power2.in' }, 0)
+  tl.to(el, { height: 0, opacity: 0, marginTop: 0, duration: 0.38, ease: 'power2.inOut' }, 0.04)
+}
+const headerSaveState = ref<'idle' | 'saved'>('idle')
+const headerSaving = ref(false)
+const draggingHeaderArt = ref(false)
+const headerDragOffset = ref<{ x: number, y: number } | null>(null)
+const profileHeaderStorageKey = computed(() => `fr-profile-header:${u.value?.id ?? u.value?.username ?? 'guest'}`)
+const clampPercent = (value: unknown, fallback: number) => Math.min(100, Math.max(0, Number(value) || fallback))
+const clampSize = (value: unknown, fallback: number) => Math.min(180, Math.max(54, Number(value) || fallback))
+
+// Coerce any stored/loaded shape into valid header settings, filling gaps with defaults.
+const normalizeHeaderSettings = (parsed: any): ProfileHeaderSettings => ({
+  color: typeof parsed?.color === 'string' && /^#[0-9a-f]{6}$/i.test(parsed.color) ? parsed.color : defaultHeaderSettings.color,
+  image: typeof parsed?.image === 'string' ? parsed.image : defaultHeaderSettings.image,
+  imageX: clampPercent(parsed?.imageX, defaultHeaderSettings.imageX),
+  imageY: clampPercent(parsed?.imageY, defaultHeaderSettings.imageY),
+  imageSize: clampSize(parsed?.imageSize, defaultHeaderSettings.imageSize),
+})
+
+const loadProfileHeader = () => {
+  // Prefer the server-persisted header (DB). Fall back to localStorage, then defaults.
+  const fromDb = u.value?.profileHeader
+  if (fromDb && typeof fromDb === 'object') {
+    profileHeader.value = normalizeHeaderSettings(fromDb)
+    headerSaveState.value = 'idle'
+    return
+  }
+  if (!import.meta.client) {
+    profileHeader.value = { ...defaultHeaderSettings }
+    return
+  }
+  try {
+    const raw = window.localStorage.getItem(profileHeaderStorageKey.value)
+    profileHeader.value = normalizeHeaderSettings(raw ? JSON.parse(raw) : {})
+  } catch {
+    profileHeader.value = { ...defaultHeaderSettings }
+  }
+  headerSaveState.value = 'idle'
+}
+
+const saveProfileHeader = async () => {
+  if (headerSaving.value) return
+  // Optimistic local cache so the look survives an offline reload too.
+  if (import.meta.client) {
+    window.localStorage.setItem(profileHeaderStorageKey.value, JSON.stringify(profileHeader.value))
+  }
+  if (!token.value) { headerSaveState.value = 'saved'; return }
+
+  headerSaving.value = true
+  try {
+    await $fetch(`${strapiBase}/api/users/me/profile-header`, {
+      method: 'POST',
+      body: { ...profileHeader.value },
+      headers: { Authorization: `Bearer ${token.value}` },
+    })
+    // Refresh /me so profileHeader is the source of truth on the next open.
+    await fetchUser()
+  } catch {
+    // Network/permission failure — keep the localStorage copy as a fallback.
+  } finally {
+    headerSaving.value = false
+    headerSaveState.value = 'saved'
+  }
+}
+
+const setHeaderImage = (src: string) => {
+  // Locked pictures can't be selected — they're earned via badges.
+  if (!isImageUnlocked(src)) return
+  profileHeader.value.image = src
+  headerSaveState.value = 'idle'
+}
+const setHeaderColor = (color: string) => { profileHeader.value.color = color; headerSaveState.value = 'idle' }
+const resetProfileHeader = async () => {
+  profileHeader.value = { ...defaultHeaderSettings }
+  await saveProfileHeader()
+}
+
+const headerIsDark = computed(() => {
+  const hex = profileHeader.value.color.replace('#', '')
+  const r = Number.parseInt(hex.slice(0, 2), 16)
+  const g = Number.parseInt(hex.slice(2, 4), 16)
+  const b = Number.parseInt(hex.slice(4, 6), 16)
+  return (r * 0.299 + g * 0.587 + b * 0.114) < 125
+})
+const profileHeaderStyle = computed(() => ({
+  '--pm-header-ink': headerIsDark.value ? '#ffffff' : '#11131c',
+  '--pm-header-muted': headerIsDark.value ? 'rgba(255,255,255,.72)' : 'rgba(17,19,28,.56)',
+  background:
+    `${headerIsDark.value ? 'linear-gradient(120deg, rgba(255,255,255,.08), rgba(255,255,255,.02))' : 'linear-gradient(120deg, rgba(255,255,255,.72), rgba(255,255,255,.18))'}, ${profileHeader.value.color}`,
+}))
+const profileHeaderArtStyle = computed(() => ({
+  left: `${profileHeader.value.imageX}%`,
+  top: `${profileHeader.value.imageY}%`,
+  width: `${profileHeader.value.imageSize}px`,
+  height: `${profileHeader.value.imageSize}px`,
+}))
+
+const moveHeaderArtToPointer = (e: PointerEvent) => {
+  if (!headerRef.value) return
+  const rect = headerRef.value.getBoundingClientRect()
+  const offset = headerDragOffset.value ?? { x: 0, y: 0 }
+  const x = ((e.clientX - rect.left - offset.x) / rect.width) * 100
+  const y = ((e.clientY - rect.top - offset.y) / rect.height) * 100
+  profileHeader.value.imageX = Math.round(clampPercent(x, profileHeader.value.imageX))
+  profileHeader.value.imageY = Math.round(clampPercent(y, profileHeader.value.imageY))
+  headerSaveState.value = 'idle'
+}
+
+const onHeaderArtPointerDown = (e: PointerEvent) => {
+  if (!profileHeader.value.image) return
+  const target = e.currentTarget as HTMLElement
+  const targetRect = target.getBoundingClientRect()
+  headerDragOffset.value = {
+    x: e.clientX - (targetRect.left + targetRect.width / 2),
+    y: e.clientY - (targetRect.top + targetRect.height / 2),
+  }
+  draggingHeaderArt.value = true
+  target.setPointerCapture?.(e.pointerId)
+  e.preventDefault()
+  moveHeaderArtToPointer(e)
+}
+const onHeaderArtPointerMove = (e: PointerEvent) => {
+  if (!draggingHeaderArt.value) return
+  moveHeaderArtToPointer(e)
+}
+const onHeaderArtPointerUp = (e: PointerEvent) => {
+  draggingHeaderArt.value = false
+  headerDragOffset.value = null
+  ;(e.currentTarget as HTMLElement).releasePointerCapture?.(e.pointerId)
+}
+
+interface ShopItem {
+  id: string
+  title: string
+  description: string
+  price: number
+  image: string
+  tag: string
+}
+
+const fallbackShopItems: ShopItem[] = [
+  {
+    id: 'keychain-dino',
+    title: 'Воксельный брелок',
+    description: 'Фирменный мини-динозавр для ключей или рюкзака.',
+    price: 180,
+    image: '/voxel/dino.png',
+    tag: 'мерч',
+  },
+  {
+    id: 'stickerpack',
+    title: 'Стикерпак',
+    description: 'Набор наклеек с иконками Фабрики решений.',
+    price: 120,
+    image: '/voxel/chat.png',
+    tag: 'быстро',
+  },
+  {
+    id: 'mug',
+    title: 'Кружка',
+    description: 'Кружка для кофе, чая и сложных дейли-челленджей.',
+    price: 420,
+    image: '/voxel/mug.png',
+    tag: 'хит',
+  },
+  {
+    id: 'notepad',
+    title: 'Блокнот',
+    description: 'Для идей, схем и планов на следующий спринт.',
+    price: 260,
+    image: '/voxel/notepad.png',
+    tag: 'офис',
+  },
+  {
+    id: 'keycaps',
+    title: 'Кейкапы',
+    description: 'Акцентные клавиши для тех, кто закрыл хард.',
+    price: 650,
+    image: '/voxel/keycaps.png',
+    tag: 'rare',
+  },
+]
+
+const shopItems = ref<ShopItem[]>(fallbackShopItems)
+const purchasedShopIds = ref<Set<string>>(new Set())
+const shopNotice = ref<string | null>(null)
+const shopStorageKey = computed(() => `fr-xp-shop:${u.value?.id ?? u.value?.username ?? 'guest'}`)
+const spentXp = computed(() =>
+  shopItems.value.reduce((sum, item) => (purchasedShopIds.value.has(item.id) ? sum + item.price : sum), 0),
+)
+const shopBalance = computed(() => Math.max(0, xp.value - spentXp.value))
+
+const normalizeShopItem = (row: any): ShopItem | null => {
+  const data = row?.attributes ?? row
+  const title = String(data?.title ?? '').trim()
+  const price = Number(data?.price ?? 0)
+  const image = String(data?.image ?? '').trim()
+  if (!title || !Number.isFinite(price) || price < 0 || !image) return null
+
+  return {
+    id: String(data?.slug ?? row?.documentId ?? row?.id ?? title),
+    title,
+    description: String(data?.description ?? ''),
+    price,
+    image,
+    tag: String(data?.tag ?? 'мерч'),
+  }
+}
+
+const loadShopItems = async () => {
+  try {
+    const res = await $fetch<{ data?: any[] }>(`${strapiBase}/api/shop-items`, {
+      params: {
+        'filters[isActive][$eq]': true,
+        'sort[0]': 'order:asc',
+        'pagination[limit]': 50,
+      },
+    })
+    const items = (res.data ?? []).map(normalizeShopItem).filter(Boolean) as ShopItem[]
+    shopItems.value = items.length ? items : fallbackShopItems
+  } catch {
+    shopItems.value = fallbackShopItems
+  }
+}
+
+const loadShopPurchases = () => {
+  if (!import.meta.client) return
+  try {
+    const raw = window.localStorage.getItem(shopStorageKey.value)
+    const ids = raw ? JSON.parse(raw) : []
+    purchasedShopIds.value = new Set(Array.isArray(ids) ? ids.filter((id) => typeof id === 'string') : [])
+  } catch {
+    purchasedShopIds.value = new Set()
+  }
+}
+
+const saveShopPurchases = () => {
+  if (!import.meta.client) return
+  window.localStorage.setItem(shopStorageKey.value, JSON.stringify([...purchasedShopIds.value]))
+}
+
+const isShopItemBought = (id: string) => purchasedShopIds.value.has(id)
+const canBuyShopItem = (item: ShopItem) => !isShopItemBought(item.id) && shopBalance.value >= item.price
+
+const buyShopItem = (item: ShopItem) => {
+  if (isPm.value || isShopItemBought(item.id)) return
+  if (shopBalance.value < item.price) {
+    shopNotice.value = `Не хватает ${fmt(item.price - shopBalance.value)} XP`
+    return
+  }
+
+  const next = new Set(purchasedShopIds.value)
+  next.add(item.id)
+  purchasedShopIds.value = next
+  saveShopPurchases()
+  shopNotice.value = `${item.title} куплен за ${fmt(item.price)} XP`
+}
 
 // ── avatar upload ──
 const { avatarUrl, upload: uploadAvatar } = useUserAvatar()
@@ -219,6 +611,12 @@ watch(
   () => props.open,
   async (isOpen) => {
     if (isOpen) {
+      await loadShopItems()
+      loadShopPurchases()
+      loadProfileHeader()
+      loadCustomizerOpen()
+      loadRewardBadges()
+      shopNotice.value = null
       document.addEventListener('keydown', onEsc)
       await nextTick()
       animateIn()
@@ -227,6 +625,16 @@ watch(
     }
   },
 )
+
+watch(shopStorageKey, loadShopPurchases)
+watch(profileHeaderStorageKey, loadProfileHeader)
+onMounted(async () => {
+  await loadShopItems()
+  loadShopPurchases()
+  loadProfileHeader()
+  loadCustomizerOpen()
+  loadRewardBadges()
+})
 
 onBeforeUnmount(() => {
   document.removeEventListener('keydown', onEsc)
@@ -263,7 +671,21 @@ defineExpose({ animateOutAndClose })
         </button>
 
         <!-- HEADER -->
-        <div class="pm-header pm-stagger">
+        <div ref="headerRef" class="pm-header pm-stagger" :style="profileHeaderStyle">
+          <img
+            v-if="profileHeader.image"
+            class="pm-header-art"
+            :class="{ 'is-dragging': draggingHeaderArt }"
+            :src="profileHeader.image"
+            alt=""
+            aria-hidden="true"
+            :style="profileHeaderArtStyle"
+            @pointerdown="onHeaderArtPointerDown"
+            @pointermove="onHeaderArtPointerMove"
+            @pointerup="onHeaderArtPointerUp"
+            @pointercancel="onHeaderArtPointerUp"
+            @lostpointercapture="onHeaderArtPointerUp"
+          />
           <div class="pm-avatar-wrap">
             <div class="pm-avatar-pulse" />
             <button
@@ -302,6 +724,101 @@ defineExpose({ animateOutAndClose })
             <span class="pm-level-label">LVL</span>
             <span class="pm-level-num">{{ lvl }}</span>
           </div>
+        </div>
+
+        <!-- HEADER CUSTOMIZER -->
+        <div class="pm-customizer pm-stagger" :class="{ 'is-collapsed': !customizerOpen }" aria-label="Настройка шапки профиля">
+          <button
+            type="button"
+            class="pm-customizer-toggle font-mono"
+            :aria-expanded="customizerOpen"
+            @click="toggleCustomizer"
+          >
+            <span>Кастомизация профиля</span>
+            <svg
+              class="pm-customizer-chevron"
+              :class="{ 'is-open': customizerOpen }"
+              viewBox="0 0 24 24" width="16" height="16"
+              fill="none" stroke="currentColor" stroke-width="2"
+              stroke-linecap="round" stroke-linejoin="round"
+            >
+              <path d="M6 9l6 6 6-6" />
+            </svg>
+          </button>
+
+          <Transition :css="false" @enter="onCustomizerEnter" @leave="onCustomizerLeave">
+          <div v-if="customizerOpen" class="pm-customizer-body">
+          <div class="pm-customizer-inner">
+          <div class="pm-custom-row">
+            <div class="pm-custom-label font-mono">Фон</div>
+            <div class="pm-color-tools">
+              <input
+                v-model="profileHeader.color"
+                class="pm-color-input"
+                type="color"
+                aria-label="Цвет фона шапки профиля"
+                @input="headerSaveState = 'idle'"
+              />
+              <button
+                v-for="color in headerColorPresets"
+                :key="color"
+                type="button"
+                class="pm-color-swatch"
+                :class="{ 'is-active': profileHeader.color.toLowerCase() === color.toLowerCase() }"
+                :style="{ backgroundColor: color }"
+                :aria-label="`Выбрать цвет ${color}`"
+                @click="setHeaderColor(color)"
+              />
+            </div>
+          </div>
+
+          <div class="pm-custom-row">
+            <div class="pm-custom-label font-mono">Картинка</div>
+            <div class="pm-image-picker">
+              <button
+                v-for="img in headerImages"
+                :key="img.src || 'none'"
+                type="button"
+                class="pm-image-choice"
+                :class="{ 'is-active': profileHeader.image === img.src, 'is-locked': !img.unlocked }"
+                :disabled="!img.unlocked"
+                :title="img.unlocked ? img.label : `Открой бейдж «${img.badgeLabel ?? img.label}»`"
+                :aria-label="img.unlocked ? `Выбрать ${img.label}` : `Заблокировано — открой бейдж ${img.badgeLabel ?? img.label}`"
+                @click="setHeaderImage(img.src)"
+              >
+                <span v-if="!img.src" class="pm-image-none font-mono">×</span>
+                <img v-else :src="img.src" :alt="img.label" />
+                <span v-if="!img.unlocked" class="pm-image-lock" aria-hidden="true"><UIcon name="i-lucide-lock" /></span>
+              </button>
+            </div>
+          </div>
+          <p class="pm-image-hint font-mono">Картинки открываются за бейджи в разделе «Достижения».</p>
+
+          <div class="pm-custom-sliders">
+            <label class="pm-slider font-mono">
+              <span>SIZE</span>
+              <input
+                v-model.number="profileHeader.imageSize"
+                type="range"
+                min="54"
+                max="180"
+                :disabled="!profileHeader.image"
+                @input="headerSaveState = 'idle'"
+              />
+            </label>
+          </div>
+
+          <div class="pm-custom-actions">
+            <button type="button" class="pm-save-header font-mono" :disabled="headerSaving" @click="saveProfileHeader">
+              {{ headerSaving ? 'Сохраняем…' : headerSaveState === 'saved' ? 'Сохранено' : 'Сохранить фон' }}
+            </button>
+            <button type="button" class="pm-reset-header font-mono" :disabled="headerSaving" @click="resetProfileHeader">
+              Сбросить
+            </button>
+          </div>
+          </div>
+          </div>
+          </Transition>
         </div>
 
         <!-- STAT CHIPS (player-only: XP / streak / challenges / badges) -->
@@ -349,6 +866,51 @@ defineExpose({ animateOutAndClose })
               </span>
             </div>
             <div class="pm-bar"><i class="pm-bar-cup" :style="{ width: cupPercent + '%' }" /></div>
+          </div>
+        </div>
+
+        <!-- XP SHOP -->
+        <div v-if="!isPm" class="pm-shop pm-stagger" aria-label="Магазин за XP">
+          <div class="pm-shop-head">
+            <div>
+              <div class="pm-shop-kicker font-mono">Магазин</div>
+              <div class="pm-shop-title font-pix">Трать XP</div>
+            </div>
+            <div class="pm-shop-balance font-mono" title="Доступно после покупок">
+              <span>{{ fmt(shopBalance) }}</span> XP
+            </div>
+          </div>
+          <div v-if="shopNotice" class="pm-shop-notice font-mono">{{ shopNotice }}</div>
+          <div class="pm-shop-grid">
+            <article
+              v-for="item in shopItems"
+              :key="item.id"
+              class="pm-shop-item"
+              :class="{ 'is-bought': isShopItemBought(item.id) }"
+            >
+              <div class="pm-shop-img-wrap">
+                <img :src="item.image" :alt="item.title" class="pm-shop-img" loading="lazy" />
+              </div>
+              <div class="pm-shop-info">
+                <div class="pm-shop-meta">
+                  <span class="pm-shop-name font-mono">{{ item.title }}</span>
+                  <span class="pm-shop-tag font-mono">{{ item.tag }}</span>
+                </div>
+                <p class="pm-shop-desc font-mono">{{ item.description }}</p>
+                <div class="pm-shop-buy-row">
+                  <span class="pm-shop-price font-pix">{{ fmt(item.price) }} XP</span>
+                  <button
+                    type="button"
+                    class="pm-shop-buy font-mono"
+                    :class="{ 'is-bought': isShopItemBought(item.id) }"
+                    :disabled="isShopItemBought(item.id) || !canBuyShopItem(item)"
+                    @click="buyShopItem(item)"
+                  >
+                    {{ isShopItemBought(item.id) ? 'Куплено' : canBuyShopItem(item) ? 'Купить' : 'Не хватает' }}
+                  </button>
+                </div>
+              </div>
+            </article>
           </div>
         </div>
 
@@ -547,14 +1109,36 @@ defineExpose({ animateOutAndClose })
 
 /* HEADER */
 .pm-header {
+  position: relative;
   display: grid;
   grid-template-columns: 62px 1fr auto;
   gap: 14px;
   align-items: center;
-  padding-right: 44px;
-  padding-bottom: 18px;
+  margin: -22px -22px 18px;
+  padding: 22px 44px 18px 22px;
+  border-radius: 18px 18px 0 0;
   border-bottom: 1px solid var(--color-line);
-  margin-bottom: 18px;
+  overflow: hidden;
+}
+.pm-header > *:not(.pm-header-art) {
+  position: relative;
+  z-index: 1;
+}
+.pm-header-art {
+  position: absolute;
+  z-index: 0;
+  object-fit: contain;
+  transform: translate(-50%, -50%);
+  will-change: left, top, transform;
+  opacity: .3;
+  filter: drop-shadow(0 12px 18px rgba(0, 0, 0, .28));
+  user-select: none;
+  touch-action: none;
+  cursor: grab;
+}
+.pm-header-art.is-dragging {
+  cursor: grabbing;
+  opacity: .42;
 }
 .pm-avatar-wrap { position: relative; width: 62px; height: 62px; }
 .pm-avatar {
@@ -635,13 +1219,13 @@ defineExpose({ animateOutAndClose })
 .pm-name {
   font-size: 22px;
   line-height: 1.1;
-  color: var(--color-ink);
+  color: var(--pm-header-ink, var(--color-ink));
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.pm-sub  { font-size: 11px; letter-spacing: .06em; color: var(--color-ink-3); margin-top: 3px; }
-.pm-team { font-size: 10px; letter-spacing: .1em; text-transform: uppercase; color: var(--color-ink-3); margin-top: 5px; }
+.pm-sub  { font-size: 11px; letter-spacing: .06em; color: var(--pm-header-muted, var(--color-ink-3)); margin-top: 3px; }
+.pm-team { font-size: 10px; letter-spacing: .1em; text-transform: uppercase; color: var(--pm-header-muted, var(--color-ink-3)); margin-top: 5px; }
 
 .pm-level {
   display: inline-flex;
@@ -658,6 +1242,209 @@ defineExpose({ animateOutAndClose })
 .pm-level-label { font-size: 9px; letter-spacing: .12em; opacity: .7; }
 .pm-level-num   { font-size: 20px; line-height: 1; }
 
+/* HEADER CUSTOMIZER */
+.pm-customizer {
+  border-bottom: 1px solid var(--color-line);
+  padding-bottom: 16px;
+  margin-bottom: 18px;
+}
+.pm-customizer.is-collapsed {
+  padding-bottom: 14px;
+}
+.pm-customizer-toggle {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 4px 0;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  color: var(--color-ink-3);
+  font-size: 10px;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  transition: color 150ms;
+}
+.pm-customizer-toggle:hover { color: var(--color-ink); }
+.pm-customizer-chevron {
+  flex-shrink: 0;
+  transition: transform 200ms ease;
+}
+.pm-customizer-chevron.is-open { transform: rotate(180deg); }
+@media (prefers-reduced-motion: reduce) {
+  .pm-customizer-chevron { transition: none; }
+}
+
+/* Motion is driven by GSAP (onCustomizerEnter/Leave). These rules only keep
+   the collapsing content clipped while its height tweens. */
+.pm-customizer-body {
+  overflow: hidden;
+  margin-top: 12px;
+}
+.pm-customizer-inner { will-change: transform, opacity; }
+.pm-custom-row {
+  display: grid;
+  grid-template-columns: 70px minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+  margin-bottom: 10px;
+}
+.pm-custom-label {
+  color: var(--color-ink-3);
+  font-size: 9px;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+}
+.pm-color-tools {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  flex-wrap: wrap;
+}
+.pm-color-input {
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: 1px solid var(--color-line);
+  border-radius: 9px;
+  overflow: hidden;
+  background: transparent;
+  cursor: pointer;
+}
+.pm-color-input::-webkit-color-swatch-wrapper { padding: 0; }
+.pm-color-input::-webkit-color-swatch { border: 0; }
+.pm-color-swatch {
+  width: 24px;
+  height: 24px;
+  border-radius: 8px;
+  border: 1px solid var(--color-line-strong);
+  cursor: pointer;
+  box-shadow: 0 0 0 0 rgba(24,239,242,0);
+  transition: transform 150ms, box-shadow 150ms;
+}
+.pm-color-swatch:hover,
+.pm-color-swatch.is-active {
+  transform: translateY(-1px);
+  box-shadow: 0 0 0 2px rgba(24,239,242,.24);
+}
+.pm-image-picker {
+  display: grid;
+  grid-template-columns: repeat(6, 34px);
+  gap: 7px;
+}
+.pm-image-choice {
+  position: relative;
+  width: 34px;
+  height: 34px;
+  border-radius: 9px;
+  border: 1px solid var(--color-line);
+  background: var(--color-bg-3);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: border-color 150ms, transform 150ms, background 150ms;
+}
+.pm-image-choice:hover:not(:disabled),
+.pm-image-choice.is-active {
+  border-color: var(--color-cyan-brand);
+  background: rgba(24,239,242,.08);
+  transform: translateY(-1px);
+}
+.pm-image-choice.is-locked {
+  cursor: not-allowed;
+  border-style: dashed;
+}
+.pm-image-choice.is-locked img { filter: grayscale(1); opacity: 0.35; }
+.pm-image-lock {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  background: rgba(11, 11, 14, 0.35);
+  border-radius: 8px;
+}
+.pm-image-hint {
+  margin: 8px 0 0;
+  font-size: 9px;
+  letter-spacing: 0.06em;
+  color: var(--color-ink-3);
+}
+.pm-image-choice img {
+  width: 25px;
+  height: 25px;
+  object-fit: contain;
+}
+.pm-image-none {
+  color: var(--color-ink-3);
+  font-size: 14px;
+  line-height: 1;
+}
+.pm-custom-sliders {
+  display: block;
+  margin-top: 12px;
+}
+.pm-slider {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  color: var(--color-ink-3);
+  font-size: 9px;
+  letter-spacing: .12em;
+}
+.pm-slider input {
+  width: 100%;
+  accent-color: var(--color-cyan-brand);
+}
+.pm-slider input:disabled {
+  opacity: .45;
+}
+.pm-custom-actions {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+  margin-top: 10px;
+}
+.pm-save-header,
+.pm-reset-header {
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: 9px;
+  font-size: 9px;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: color 150ms, border-color 150ms, background 150ms;
+}
+.pm-save-header {
+  border: 1px solid var(--color-cyan-brand);
+  background: rgba(24,239,242,.08);
+  color: var(--color-cyan-brand);
+}
+.pm-save-header:hover {
+  background: rgba(24,239,242,.16);
+}
+.pm-reset-header {
+  border: 1px solid var(--color-line);
+  background: transparent;
+  color: var(--color-ink-3);
+}
+.pm-reset-header:hover {
+  color: var(--color-ink);
+  border-color: var(--color-line-strong);
+  background: var(--color-bg-3);
+}
+.pm-save-header:disabled,
+.pm-reset-header:disabled {
+  opacity: .6;
+  cursor: progress;
+}
+
 /* STATS */
 .pm-stats {
   display: grid;
@@ -666,15 +1453,25 @@ defineExpose({ animateOutAndClose })
   margin-bottom: 18px;
 }
 .pm-stat {
-  padding: 12px 10px;
+  min-width: 0;
+  padding: 12px 8px;
   background: var(--color-bg-3);
   border: 1px solid var(--color-line);
   border-radius: 12px;
+  overflow: hidden;
   transition: transform 180ms ease, border-color 180ms ease;
 }
 .pm-stat:hover { transform: translateY(-2px); border-color: var(--color-line-strong); }
 .pm-stat-num { font-size: 22px; line-height: 1; }
-.pm-stat-cap { font-size: 9px; letter-spacing: .1em; text-transform: uppercase; color: var(--color-ink-3); margin-top: 5px; }
+.pm-stat-cap {
+  font-size: 9px;
+  letter-spacing: .04em;
+  line-height: 1.2;
+  text-transform: uppercase;
+  color: var(--color-ink-3);
+  margin-top: 5px;
+  overflow-wrap: anywhere;
+}
 
 /* BARS */
 .pm-bars { display: flex; flex-direction: column; gap: 12px; margin-bottom: 18px; }
@@ -715,6 +1512,170 @@ defineExpose({ animateOutAndClose })
 .pm-bar-xp     { background: linear-gradient(90deg, var(--color-cyan-brand), var(--color-mint-brand)); box-shadow: 0 0 10px rgba(24,239,242,.4); }
 .pm-bar-streak { background: var(--color-mint-brand); box-shadow: 0 0 8px rgba(82,242,197,.35); }
 .pm-bar-cup    { background: linear-gradient(90deg, var(--color-purple-brand), #d28bff); box-shadow: 0 0 10px rgba(181,89,243,.35); }
+
+/* XP SHOP */
+.pm-shop {
+  border-top: 1px solid var(--color-line);
+  padding-top: 16px;
+  margin-bottom: 18px;
+}
+.pm-shop-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 14px;
+  margin-bottom: 12px;
+}
+.pm-shop-kicker {
+  font-size: 9px;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+  color: var(--color-ink-3);
+  margin-bottom: 3px;
+}
+.pm-shop-title {
+  font-size: 20px;
+  line-height: 1;
+  color: var(--color-ink);
+}
+.pm-shop-balance {
+  flex-shrink: 0;
+  padding: 7px 9px;
+  border-radius: 9px;
+  border: 1px solid rgba(24, 239, 242, 0.35);
+  background: rgba(24, 239, 242, 0.08);
+  color: var(--color-cyan-brand);
+  font-size: 10px;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+.pm-shop-balance span {
+  color: var(--color-ink);
+  font-weight: 700;
+}
+.pm-shop-notice {
+  margin-bottom: 10px;
+  padding: 8px 10px;
+  border-radius: 9px;
+  border: 1px solid rgba(82, 242, 197, 0.3);
+  background: rgba(82, 242, 197, 0.08);
+  color: var(--color-mint-brand);
+  font-size: 10px;
+  line-height: 1.35;
+}
+.pm-shop-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+.pm-shop-item {
+  display: grid;
+  grid-template-columns: 62px minmax(0, 1fr);
+  gap: 11px;
+  align-items: center;
+  padding: 10px;
+  border: 1px solid var(--color-line);
+  border-radius: 12px;
+  background: var(--color-bg-3);
+  transition: transform 180ms ease, border-color 180ms ease, opacity 180ms ease;
+}
+.pm-shop-item:hover {
+  transform: translateY(-2px);
+  border-color: var(--color-line-strong);
+}
+.pm-shop-item.is-bought {
+  opacity: .78;
+}
+.pm-shop-img-wrap {
+  width: 62px;
+  height: 62px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--color-line);
+  overflow: hidden;
+}
+.pm-shop-img {
+  width: 50px;
+  height: 50px;
+  object-fit: contain;
+  filter: drop-shadow(0 8px 10px rgba(0, 0, 0, 0.35));
+}
+.pm-shop-info {
+  min-width: 0;
+}
+.pm-shop-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 5px;
+}
+.pm-shop-name {
+  min-width: 0;
+  color: var(--color-ink);
+  font-size: 11px;
+  letter-spacing: .04em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pm-shop-tag {
+  flex-shrink: 0;
+  padding: 3px 6px;
+  border-radius: 999px;
+  background: rgba(181, 89, 243, 0.12);
+  color: var(--color-purple-brand);
+  font-size: 8px;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+}
+.pm-shop-desc {
+  margin: 0 0 9px;
+  color: var(--color-ink-3);
+  font-size: 10px;
+  line-height: 1.35;
+}
+.pm-shop-buy-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.pm-shop-price {
+  flex-shrink: 0;
+  color: var(--color-cyan-brand);
+  font-size: 15px;
+  line-height: 1;
+}
+.pm-shop-buy {
+  min-width: 88px;
+  padding: 8px 10px;
+  border-radius: 9px;
+  border: 1px solid var(--color-cyan-brand);
+  background: rgba(24, 239, 242, 0.08);
+  color: var(--color-cyan-brand);
+  font-size: 9px;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: background 150ms, border-color 150ms, color 150ms, opacity 150ms;
+}
+.pm-shop-buy:hover:not(:disabled) {
+  background: rgba(24, 239, 242, 0.16);
+}
+.pm-shop-buy:disabled {
+  opacity: .55;
+  cursor: default;
+}
+.pm-shop-buy.is-bought {
+  border-color: var(--color-mint-brand);
+  background: rgba(82, 242, 197, 0.1);
+  color: var(--color-mint-brand);
+  opacity: 1;
+}
 
 /* ACCOUNT */
 .pm-account {
@@ -792,6 +1753,18 @@ defineExpose({ animateOutAndClose })
 /* mobile */
 @media (max-width: 480px) {
   .pm-card { right: 8px; left: 8px; width: auto; }
+  .pm-header { grid-template-columns: 56px 1fr auto; gap: 10px; padding-right: 36px; }
+  .pm-avatar-wrap,
+  .pm-avatar { width: 56px; height: 56px; }
+  .pm-name { font-size: 19px; }
+  .pm-custom-row { grid-template-columns: 1fr; gap: 7px; }
+  .pm-image-picker { grid-template-columns: repeat(5, 34px); }
+  .pm-custom-actions { grid-template-columns: 1fr; }
   .pm-stats { grid-template-columns: repeat(2, minmax(0,1fr)); }
+  .pm-shop-item { grid-template-columns: 54px minmax(0, 1fr); gap: 9px; }
+  .pm-shop-img-wrap { width: 54px; height: 54px; }
+  .pm-shop-img { width: 44px; height: 44px; }
+  .pm-shop-buy-row { align-items: stretch; flex-direction: column; gap: 8px; }
+  .pm-shop-buy { width: 100%; }
 }
 </style>

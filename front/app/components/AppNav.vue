@@ -36,6 +36,9 @@ const initial = computed(() => (displayName.value[0] ?? '?').toUpperCase())
 
 const { avatarUrl } = useUserAvatar()
 
+// ── гайд-тур по платформе (driver.js) ──────────────────────────────────
+const { startTour } = useTour()
+
 const onLogout = async () => {
   await logout()
 }
@@ -66,10 +69,20 @@ const closeProfile = () => {
         </span>
       </a>
 
-      <div class="hidden md:flex gap-7 items-center text-sm text-ink-2">
-        <a v-for="l in links" :key="l.href" :href="l.href" class="py-2 transition-colors duration-150 hover:text-cyan-brand">
-          {{ l.label }}
-        </a>
+      <div data-tour="nav" class="hidden md:flex gap-7 items-center text-sm text-ink-2">
+        <template v-for="l in links" :key="l.href">
+          <button
+            v-if="l.href === '#how'"
+            type="button"
+            class="py-2 transition-colors duration-150 hover:text-cyan-brand cursor-pointer bg-transparent border-0 text-inherit"
+            @click="startTour"
+          >
+            {{ l.label }}
+          </button>
+          <a v-else :href="l.href" class="py-2 transition-colors duration-150 hover:text-cyan-brand">
+            {{ l.label }}
+          </a>
+        </template>
       </div>
 
       <div class="flex items-center gap-2.5">

@@ -23,21 +23,33 @@ export interface ChallengeLevel {
   accent: Accent
 }
 
+export type BadgeCondition =
+  | 'none'
+  | 'first_light_challenge'
+  | 'first_medium_challenge'
+  | 'first_hard_challenge'
+  | 'reach_level'
+  | 'complete_dailies'
+  | 'streak_days'
+  | 'complete_challenges'
+
 export interface Badge {
   id?: number
-  symbol: string
+  /** Stable identifier — matches across draft/published, unlike numeric id. */
+  code?: string
   label: string
+  /** Uploaded picture (Strapi media). The only thing shown on the coin. */
+  image?: string
   accent?: Accent
   locked?: boolean
   got?: boolean
-}
-
-export interface Achievement {
-  icon: string
-  title: string
-  text: string
-  gain: string
-  accent: Accent
+  /** How the badge is unlocked — drives the "что нужно" hint in the UI. */
+  conditionType?: BadgeCondition
+  conditionValue?: number
+  /** XP paid out when the badge is earned. */
+  xpReward?: number
+  /** Profile-header picture this badge unlocks. */
+  rewardImage?: string | null
 }
 
 export interface DailyQuest {
@@ -88,11 +100,24 @@ export interface LeaderboardRow {
   level: string
   closed: string
   xp: string
+  /** Raw numeric values — used for sorting / re-ranking the table. */
+  xpValue?: number
+  closedValue?: number
+  /** Current daily streak, in days. */
+  streak?: number
   deltaUp?: number
   deltaDown?: number
   gradient: string
   initial: string
   me?: boolean
+  /** Uploaded avatar photo — shown in the rank tile. */
+  avatarUrl?: string | null
+  /** profileHeader customization — painted as the row's banner background. */
+  headerColor?: string | null
+  headerImage?: string | null
+  headerImageX?: number | null
+  headerImageY?: number | null
+  headerImageSize?: number | null
 }
 
 export interface RoleCard {

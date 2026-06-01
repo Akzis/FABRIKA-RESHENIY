@@ -18,6 +18,14 @@ export interface UserProfile {
   teamCupTotal?: number | null
   completedDailyQuests?: { id: number; documentId?: string }[] | null
   completedChallenges?: { id: number; documentId?: string }[] | null
-  earnedBadges?: { id: number; documentId?: string }[] | null
+  earnedBadges?: { id: number; documentId?: string; code?: string; label?: string; rewardImage?: string | null }[] | null
   profileActivated?: boolean | null
+  /** Profile-header customization, persisted server-side via /users/me/profile-header. */
+  profileHeader?: {
+    color: string
+    image: string
+    imageX: number
+    imageY: number
+    imageSize: number
+  } | null
 }

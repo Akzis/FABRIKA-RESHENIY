@@ -1,7 +1,6 @@
 import { computed } from 'vue'
 import type {
   Accent,
-  Achievement,
   Badge,
   ChallengeLevel,
   ChallengeTask,
@@ -22,9 +21,9 @@ const accentFor = (a?: string | null): Accent =>
 
 export const landingDefaults = {
   heroStats: [
-    { value: '1 240', label: 'игроков на платформе', accent: 'cyan' },
-    { value: '87k', label: 'челленджей закрыто', accent: 'mint' },
-    { value: '42', label: 'команды в рейтинге', accent: 'purple' },
+    { value: '0', label: 'команд в рейтинге', accent: 'purple' },
+    { value: '0', label: 'участников в командах', accent: 'cyan' },
+    { value: '0', label: 'челленджей закрыто', accent: 'mint' },
   ] as HeroStat[],
 
   howSteps: [
@@ -65,30 +64,12 @@ export const landingDefaults = {
   ] as ChallengeLevel[],
 
   badges: [
-    { symbol: '★', label: 'Первый шаг', got: true, accent: 'mint' },
-    { symbol: '⚡', label: 'Молния', got: true, accent: 'cyan' },
-    { symbol: '♛', label: 'Лидер', got: true, accent: 'purple' },
-    { symbol: '▲', label: '7 дней', got: true, accent: 'mint' },
-    { symbol: '♥', label: 'Душа кмд', got: true, accent: 'cyan' },
-    { symbol: '◉', label: 'Снайпер', got: true, accent: 'purple' },
-    { symbol: '✦', label: 'Звезда', got: true, accent: 'mint' },
-    { symbol: '⬡', label: 'Архитектор', got: true, accent: 'cyan' },
-    { symbol: '▣', label: 'Марафон' },
-    { symbol: '♞', label: 'Стратег' },
-    { symbol: '✺', label: '100 задач' },
-    { symbol: '◈', label: '???', locked: true },
-    { symbol: '⚔', label: '???', locked: true },
-    { symbol: '☄', label: '???', locked: true },
-    { symbol: '⌬', label: '???', locked: true },
-    { symbol: '⬢', label: '???', locked: true },
+    { label: 'Первый шаг', accent: 'mint', conditionType: 'first_light_challenge', conditionValue: 0 },
+    { label: '5 уровень', accent: 'purple', conditionType: 'reach_level', conditionValue: 5 },
+    { label: 'Дисциплина', accent: 'cyan', conditionType: 'complete_dailies', conditionValue: 10 },
+    { label: '7 дней', accent: 'mint', conditionType: 'streak_days', conditionValue: 7 },
+    { label: 'Снайпер', accent: 'purple', conditionType: 'first_hard_challenge', conditionValue: 0 },
   ] as Badge[],
-
-  achievements: [
-    { icon: '⚡', title: 'Молниеносный', text: 'Закрой 3 челленджа за один день', gain: '+200', accent: 'cyan' },
-    { icon: '▲', title: 'Серия из семи', text: 'Сделай дейли 7 дней подряд', gain: '+500', accent: 'mint' },
-    { icon: '♛', title: 'Топ-1 недели', text: 'Возглавь рейтинг команды на 7 дней', gain: '+1k', accent: 'purple' },
-    { icon: '◉', title: 'Снайпер', text: 'Сдай HARD-челлендж за полдня', gain: '+750', accent: 'cyan' },
-  ] as Achievement[],
 
   daily: [
     { title: 'Закрой 1 LIGHT-челлендж', points: 50, description: 'Выбери любой челлендж уровня LIGHT и доведи его до сдачи. Лёгкая задача на 15–60 минут, чтобы поддержать дейли-серию и быстро забрать опыт.' },
@@ -120,7 +101,7 @@ export const landingDefaults = {
         'Получает <b>дейли-задания</b> каждое утро',
         'Видит <b>свой XP, серию и место в рейтинге</b>',
         '<b>Тратит баллы</b> в магазине наград',
-        'Собирает <b>бейджи</b> и эксклюзивные ачивки',
+        'Собирает <b>бейджи</b>',
       ],
     },
     {
@@ -151,9 +132,8 @@ export const useLandingData = () => {
     heroStats:    computed(() => store.heroStats.length    ? store.heroStats    : landingDefaults.heroStats),
     howSteps:     computed(() => store.howSteps.length     ? store.howSteps     : landingDefaults.howSteps),
     levels:       computed(() => store.levels.length       ? store.levels       : landingDefaults.levels),
-    challenges:   computed(() => store.challenges.length   ? store.challenges   : landingDefaults.challenges),
+    challenges:   computed(() => store.loaded ? store.challenges : landingDefaults.challenges),
     badges:       computed(() => store.badges.length       ? store.badges       : landingDefaults.badges),
-    achievements: computed(() => store.achievements.length ? store.achievements : landingDefaults.achievements),
     daily:        computed(() => store.daily.length        ? store.daily        : landingDefaults.daily),
     leaderboard:  computed(() => store.leaderboard.length  ? store.leaderboard  : landingDefaults.leaderboard),
     roles:        computed(() => store.roles.length        ? store.roles        : landingDefaults.roles),
@@ -168,11 +148,16 @@ export const useLandingData = () => {
 
 export const useStrapiLanding = async () => {
   const store = useLandingStore()
-  if (store.loaded) return // already hydrated this session
 
-  const mediaFn = useStrapiMedia()
+  // Build absolute media URLs ourselves. useStrapiMedia() is unreliable in this
+  // @nuxtjs/strapi version (it isn't callable and throws), and a throw inside the
+  // mapping below aborts the entire landing hydration — which is exactly what hid
+  // every CMS image (badges included).
+  const strapiMediaBase = (useRuntimeConfig().public as any)?.strapi?.url ?? 'http://localhost:1337'
+  const toMediaUrl = (url: string): string =>
+    /^https?:\/\//.test(url) ? url : `${strapiMediaBase}${url.startsWith('/') ? '' : '/'}${url}`
   const media = (url: unknown, fallback: string): string =>
-    typeof url === 'string' && url.length > 0 ? (mediaFn(url) as string) : fallback
+    typeof url === 'string' && url.length > 0 ? toMediaUrl(url) : fallback
 
   const { find } = useStrapi()
 
@@ -202,26 +187,95 @@ export const useStrapiLanding = async () => {
         'fields[4]': 'xp',
         'fields[5]': 'level',
         'fields[6]': 'challengesClosed',
+        // current daily streak — used by the "по стрику" leaderboard sort
+        'fields[7]': 'streak',
+        // profileHeader (json) drives the customized rank tile when no avatar
+        'fields[8]': 'profileHeader',
         // team is now a relation — pull just its name for display
         'populate[team][fields][0]': 'name',
+        // uploaded avatar for the customized profile tile
+        'populate[avatar][fields][0]': 'url',
       },
       headers: token ? { Authorization: `Bearer ${token}` } : {},
     })
 
-  const [steps, levels, challenges, badges, achievements, daily, topMembers, roles] = await Promise.all([
-    safe(() => find<Many<any>>('how-steps', { populate: ['icon'], sort: 'order:asc' })),
-    safe(() => find<Many<any>>('challenge-levels', { populate: ['rows', 'image'], sort: 'order:asc' })),
-    safe(() => find<Many<any>>('challenges', { sort: 'order:asc' })),
-    safe(() => find<Many<any>>('badges', { sort: 'order:asc' })),
-    safe(() => find<Many<any>>('achievements', { sort: 'order:asc' })),
+  const fetchChallenges = async () =>
+    $fetch<Many<any>>(`${strapiUrl}/api/challenges`, {
+      params: { 'sort[0]': 'order:asc' },
+    })
+
+  // Total number of teams — read from pagination meta (pageSize=1 keeps it cheap).
+  // Requires `api::team.team.find` for the authenticated role (see cms/src/index.ts).
+  // If that grant is missing the call 403s, and we fall back to the distinct-team
+  // count derived from members below.
+  const fetchTeamsTotal = async () =>
+    $fetch<{ meta?: { pagination?: { total?: number } } }>(`${strapiUrl}/api/teams`, {
+      params: { 'fields[0]': 'id', 'pagination[pageSize]': 1 },
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    })
+
+  // Every member that belongs to a team (PMs are excluded — they own a team via
+  // managedTeam but aren't participants). Drives three hero stats:
+  //   • participant count       (array length)
+  //   • teams (fallback)        (distinct team ids)
+  //   • total challenges closed (sum of challengesClosed)
+  // pagination[limit]=-1 lifts the users-permissions default page cap.
+  const fetchTeamMembers = async () =>
+    $fetch<any[]>(`${strapiUrl}/api/users`, {
+      params: {
+        'filters[teamRole][$eq]': 'member',
+        'fields[0]': 'id',
+        'fields[1]': 'challengesClosed',
+        'populate[team][fields][0]': 'id',
+        'pagination[limit]': -1,
+      },
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    })
+
+  // NOTE: @nuxtjs/strapi's useStrapi().find() with a `populate` option returns
+  // empty here (the populated relations come back unpopulated/blank), which
+  // silently drops CMS images and falls back to defaults. We fetch the
+  // collections that need populated media via $fetch directly — same proven
+  // path as challenges/leaderboard — so images actually arrive.
+  const fetchMany = (path: string, params: Record<string, string>) =>
+    $fetch<Many<any>>(`${strapiUrl}/api/${path}`, { params })
+
+  const [steps, levels, challenges, badges, daily, topMembers, roles, teamsTotalRes, teamMembers] = await Promise.all([
+    safe(() => fetchMany('how-steps', { 'populate[0]': 'icon', 'sort[0]': 'order:asc' })),
+    safe(() => fetchMany('challenge-levels', { 'populate[0]': 'rows', 'populate[1]': 'image', 'sort[0]': 'order:asc' })),
+    safe(fetchChallenges),
+    safe(() => fetchMany('badges', { 'populate[0]': 'image', 'sort[0]': 'order:asc' })),
     safe(() => find<Many<any>>('daily-quests', { sort: 'order:asc' })),
     safe(fetchTopMembers),
-    safe(() => find<Many<any>>('role-cards', { populate: ['image'], sort: 'order:asc' })),
+    safe(() => fetchMany('role-cards', { 'populate[0]': 'image', 'sort[0]': 'order:asc' })),
+    safe(fetchTeamsTotal),
+    safe(fetchTeamMembers),
   ])
 
   const out: Partial<Parameters<typeof store.hydrate>[0]> = { source: 'defaults' }
 
-  // Hero text + stats are hardcoded in AppHero.vue / landingDefaults — no CMS fetch.
+  // Hero stats — computed live from real data:
+  //   • total teams           (teams pagination meta)
+  //   • participants in a team (users with a team relation)
+  //   • challenges closed      (sum of challengesClosed over those participants)
+  const fmtNum = (n: number) => n.toLocaleString('ru-RU').replace(/,/g, ' ')
+  // Keep only members actually attached to a team ("только которые в команде").
+  // The custom users `find` controller flattens the relation to `{ name }` (no id).
+  const members = (Array.isArray(teamMembers) ? teamMembers : []).filter((m: any) => m.team?.name)
+  if (teamsTotalRes || members.length) {
+    const participants = members.length
+    const challengesClosed = members.reduce((sum, m: any) => sum + Number(m.challengesClosed ?? 0), 0)
+    // Prefer the exact teams total; if the teams endpoint was forbidden, fall back
+    // to the number of distinct teams the members actually belong to.
+    const metaTotal = Number(teamsTotalRes?.meta?.pagination?.total ?? 0)
+    const distinctTeams = new Set(members.map((m: any) => m.team?.name).filter(Boolean)).size
+    const teamsTotal = metaTotal || distinctTeams
+    out.heroStats = [
+      { value: fmtNum(teamsTotal), label: 'команд в рейтинге', accent: 'purple' },
+      { value: fmtNum(participants), label: 'участников в командах', accent: 'cyan' },
+      { value: fmtNum(challengesClosed), label: 'челленджей закрыто', accent: 'mint' },
+    ]
+  }
 
   if (steps?.data?.length) {
     out.howSteps = steps.data.map((s: any) => ({
@@ -247,18 +301,17 @@ export const useStrapiLanding = async () => {
   if (badges?.data?.length) {
     out.badges = badges.data.map((b: any) => ({
       id: b.id,
-      symbol: b.symbol,
+      code: typeof b.code === 'string' ? b.code : undefined,
       label: b.label,
+      image: b.image?.url ? toMediaUrl(b.image.url) : undefined,
       accent: accentFor(b.accent),
       // `got` is per-user, computed in SectionAchievements from the user's
       // earnedBadges — the badge's own `got` flag is only a CMS preview default.
       locked: !!b.locked,
-    }))
-  }
-
-  if (achievements?.data?.length) {
-    out.achievements = achievements.data.map((a: any) => ({
-      icon: a.icon, title: a.title, text: a.text, gain: a.gain, accent: accentFor(a.accent),
+      conditionType: b.conditionType ?? 'none',
+      conditionValue: Number(b.conditionValue ?? 0),
+      xpReward: Number(b.xpReward ?? 0),
+      rewardImage: typeof b.rewardImage === 'string' && b.rewardImage ? b.rewardImage : null,
     }))
   }
 
@@ -268,7 +321,7 @@ export const useStrapiLanding = async () => {
     }))
   }
 
-  if (challenges?.data?.length) {
+  if (Array.isArray(challenges?.data)) {
     out.challenges = challenges.data.map((c: any) => ({
       id: c.id,
       title: c.title,
@@ -293,6 +346,8 @@ export const useStrapiLanding = async () => {
       const name = u.displayName || u.username || 'Игрок'
       const xp = Number(u.xp ?? 0)
       const closed = Number(u.challengesClosed ?? 0)
+      const streak = Number(u.streak ?? 0)
+      const ph = u.profileHeader && typeof u.profileHeader === 'object' ? u.profileHeader : null
       return {
         rank: idx + 1,
         userId: u.id,
@@ -301,8 +356,17 @@ export const useStrapiLanding = async () => {
         level: `LVL ${u.level ?? 1}`,
         closed: `${closed} закрыто`,
         xp: xp.toLocaleString('ru-RU').replace(/,/g, ' '),
+        xpValue: xp,
+        closedValue: closed,
+        streak,
         gradient: palette[idx % palette.length],
         initial: (name[0] ?? '?').toUpperCase(),
+        avatarUrl: u.avatar?.url ? toMediaUrl(u.avatar.url) : null,
+        headerColor: typeof ph?.color === 'string' ? ph.color : null,
+        headerImage: typeof ph?.image === 'string' && ph.image ? ph.image : null,
+        headerImageX: Number.isFinite(ph?.imageX) ? ph.imageX : 50,
+        headerImageY: Number.isFinite(ph?.imageY) ? ph.imageY : 50,
+        headerImageSize: Number.isFinite(ph?.imageSize) ? ph.imageSize : 100,
       } as LeaderboardRow
     })
   }

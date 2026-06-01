@@ -6,6 +6,7 @@
  *   POST /api/users/me/join   — redeem an invite token → join that team
  */
 import jwt from 'jsonwebtoken';
+import { STARTER_PROFILE_IMAGE } from '../../seed-data';
 
 // How long a copied invite link stays valid (the PM hands it to a participant).
 const INVITE_TTL_SECONDS = 30 * 60; // 30 minutes
@@ -23,6 +24,132 @@ export default (plugin: any) => {
   // JWT secret so no extra config is required.
   const inviteSecret = (): string =>
     strapi.config.get('plugin::users-permissions.jwtSecret') as string;
+  const HEADER_DEFAULT = {
+    color: '#d9fbff',
+    image: '/voxel/dino.png',
+    imageX: 82,
+    imageY: 50,
+    imageSize: 104,
+  };
+  const clamp = (n: unknown, min: number, max: number, fallback: number) => {
+    const value = Number(n);
+    if (!Number.isFinite(value)) return fallback;
+    return Math.min(max, Math.max(min, Math.round(value)));
+  };
+  const normalizeProfileHeader = (raw: any) => {
+    const color = String(raw?.color ?? '').trim();
+    const image = String(raw?.image ?? '').trim();
+    return {
+      color: /^#[0-9a-f]{6}$/i.test(color) ? color.toLowerCase() : HEADER_DEFAULT.color,
+      image: image.length <= 255 ? image : HEADER_DEFAULT.image,
+      imageX: clamp(raw?.imageX, 0, 100, HEADER_DEFAULT.imageX),
+      imageY: clamp(raw?.imageY, 0, 100, HEADER_DEFAULT.imageY),
+      imageSize: clamp(raw?.imageSize, 54, 180, HEADER_DEFAULT.imageSize),
+    };
+  };
+
+  // ── Progression helpers ────────────────────────────────────────────────
+  // Flat curve: every level costs the same amount of XP. level 1 = 0 XP.
+  // Keeps `xpToNextLevel` in sync so the dashboard progress bar is correct.
+  const XP_PER_LEVEL = 250;
+  const levelFromXp = (xp: unknown) => {
+    const total = Math.max(0, Number(xp) || 0);
+    const level = Math.floor(total / XP_PER_LEVEL) + 1;
+    const xpToNextLevel = XP_PER_LEVEL - (total % XP_PER_LEVEL);
+    return { level, xpToNextLevel };
+  };
+
+  // Daily-streak bookkeeping. Counts calendar days on which the user closed at
+  // least one daily quest: same day → unchanged, consecutive day → +1, gap → reset to 1.
+  const dayStr = (d: Date) => d.toISOString().slice(0, 10);
+  const nextStreak = (lastDailyDate: unknown, currentStreak: unknown) => {
+    const today = dayStr(new Date());
+    const prev = lastDailyDate ? String(lastDailyDate).slice(0, 10) : null;
+    let streak = Number(currentStreak) || 0;
+    if (prev === today) {
+      streak = streak || 1; // already counted today
+    } else {
+      const yesterday = dayStr(new Date(Date.now() - 86_400_000));
+      streak = prev === yesterday ? streak + 1 : 1;
+    }
+    return { streak, today };
+  };
+
+  // ── Badge awarding ─────────────────────────────────────────────────────
+  // Re-evaluates every badge that has an automatic condition and grants the
+  // ones the user now qualifies for. Idempotent: already-earned badges are
+  // skipped, so it's safe to call after any stat change. Keeps `badgesCount`
+  // in sync. Returns the freshly-awarded badges ({ id, code, label }).
+  const awardBadges = async (userId: number) => {
+    const user: any = await es.findOne('plugin::users-permissions.user', userId, {
+      fields: ['xp', 'level', 'streak', 'challengesClosed'],
+      populate: {
+        earnedBadges: { fields: ['id'] },
+        completedDailyQuests: { fields: ['id'] },
+        completedChallenges: { fields: ['id', 'level'] },
+      },
+    });
+    if (!user) return [];
+
+    const stats = {
+      level: Number(user.level) || 1,
+      streak: Number(user.streak) || 0,
+      challengesClosed: Number(user.challengesClosed) || 0,
+      dailies: (user.completedDailyQuests ?? []).length,
+      challengeLevels: new Set(
+        (user.completedChallenges ?? []).map((c: any) => String(c.level || '')),
+      ),
+    };
+
+    const earnedIds: number[] = (user.earnedBadges ?? [])
+      .map((b: any) => b.id)
+      .filter((x: any) => x != null);
+    const earnedSet = new Set(earnedIds);
+
+    const badges: any[] = await es.findMany('api::badge.badge', {
+      filters: { conditionType: { $ne: 'none' } },
+      fields: ['id', 'code', 'label', 'conditionType', 'conditionValue', 'xpReward', 'rewardImage'],
+      limit: 500,
+    });
+
+    const meets = (b: any): boolean => {
+      const v = Number(b.conditionValue) || 0;
+      switch (b.conditionType) {
+        case 'first_light_challenge':  return stats.challengeLevels.has('light');
+        case 'first_medium_challenge': return stats.challengeLevels.has('medium');
+        case 'first_hard_challenge':   return stats.challengeLevels.has('hard');
+        case 'reach_level':            return stats.level >= v;
+        case 'complete_dailies':       return stats.dailies >= v;
+        case 'streak_days':            return stats.streak >= v;
+        case 'complete_challenges':    return stats.challengesClosed >= v;
+        default:                       return false;
+      }
+    };
+
+    const newly = badges.filter((b) => !earnedSet.has(b.id) && meets(b));
+    if (!newly.length) return [];
+
+    // Earning badges also pays out their xpReward and recomputes level.
+    const bonusXp = newly.reduce((sum, b) => sum + (Number(b.xpReward) || 0), 0);
+    const newXp = (Number(user.xp) || 0) + bonusXp;
+    const { level, xpToNextLevel } = levelFromXp(newXp);
+
+    const nextIds = [...earnedIds, ...newly.map((b) => b.id)];
+    await es.update('plugin::users-permissions.user', userId, {
+      data: {
+        earnedBadges: nextIds,
+        badgesCount: nextIds.length,
+        xp: newXp,
+        level,
+        xpToNextLevel,
+      },
+    });
+
+    return newly.map((b) => ({
+      id: b.id, code: b.code, label: b.label,
+      xpReward: Number(b.xpReward) || 0, rewardImage: b.rewardImage ?? null,
+    }));
+  };
 
   // ── /api/users/me — extended profile + populated relations ──────────────
   plugin.controllers.user.me = async (ctx: any) => {
@@ -36,7 +163,7 @@ export default (plugin: any) => {
         populate: {
           completedDailyQuests: true,
           completedChallenges: { fields: ['id'] },
-          earnedBadges: { fields: ['id'] },
+          earnedBadges: { fields: ['id', 'code', 'label', 'rewardImage'] },
           avatar: true,
           team: { fields: ['id', 'name'] },
           managedTeam: { fields: ['id', 'name'] },
@@ -44,6 +171,7 @@ export default (plugin: any) => {
         fields: [
           'id', 'username', 'email', 'confirmed', 'blocked',
           'displayName', 'teamRole', 'profileActivated',
+          'profileHeader',
           'xp', 'level', 'xpToNextLevel',
           'streak', 'challengesClosed', 'badgesCount',
           'teamCupPlace', 'teamCupCurrent', 'teamCupTotal',
@@ -226,7 +354,7 @@ export default (plugin: any) => {
     if (!task) return ctx.badRequest('task not found');
 
     const me: any = await es.findOne('plugin::users-permissions.user', userId, {
-      fields: ['xp', 'challengesClosed'],
+      fields: ['xp', 'challengesClosed', 'streak', 'lastDailyDate'],
       populate: { [relation]: { fields: ['id'] } },
     });
 
@@ -242,15 +370,29 @@ export default (plugin: any) => {
     }
 
     const reward = Number(task[rewardField]) || 0;
+    const newXp = (Number(me?.xp) || 0) + reward;
+    const { level, xpToNextLevel } = levelFromXp(newXp);
     const data: Record<string, unknown> = {
       [relation]: [...doneIds, taskId],
-      xp: (Number(me?.xp) || 0) + reward,
+      xp: newXp,
+      level,
+      xpToNextLevel,
     };
-    if (isChallenge) data.challengesClosed = (Number(me?.challengesClosed) || 0) + 1;
+    if (isChallenge) {
+      data.challengesClosed = (Number(me?.challengesClosed) || 0) + 1;
+    } else {
+      // Closing a daily quest keeps the calendar-day streak alive.
+      const { streak, today } = nextStreak(me?.lastDailyDate, me?.streak);
+      data.streak = streak;
+      data.lastDailyDate = today;
+    }
 
     await es.update('plugin::users-permissions.user', userId, { data });
 
-    ctx.body = { ok: true, awarded: reward, xp: (Number(me?.xp) || 0) + reward };
+    // Re-check badge conditions against the user's new stats.
+    const awardedBadges = await awardBadges(userId);
+
+    ctx.body = { ok: true, awarded: reward, xp: newXp, level, awardedBadges };
   };
 
   // ── /api/users/me/challenges/submit — participant sends a challenge for review ─
@@ -453,14 +595,17 @@ export default (plugin: any) => {
         .map((c: any) => c.id)
         .filter((x: any) => x != null);
 
-      const data: Record<string, unknown> = {
-        xp: (Number(participant?.xp) || 0) + reward,
-      };
+      const newXp = (Number(participant?.xp) || 0) + reward;
+      const { level, xpToNextLevel } = levelFromXp(newXp);
+      const data: Record<string, unknown> = { xp: newXp, level, xpToNextLevel };
       if (challengeId && !doneIds.includes(challengeId)) {
         data.completedChallenges = [...doneIds, challengeId];
         data.challengesClosed = (Number(participant?.challengesClosed) || 0) + 1;
       }
       await es.update('plugin::users-permissions.user', pid, { data });
+
+      // Approving a challenge may unlock badges for the participant.
+      await awardBadges(pid);
     }
 
     ctx.body = { ok: true, status: decision, awardedXp: reward };
@@ -507,6 +652,42 @@ export default (plugin: any) => {
         avatarUrl: m.avatar?.url ?? null,
       })),
     };
+  };
+
+  // ── /api/users/me/team/members/:id — PM removes a member from their team ─
+  // Clears the member's `team` relation (does not delete the account). Only the
+  // owning team's PM may do this, and only for someone currently in their team.
+  plugin.controllers.user.removeMember = async (ctx: any) => {
+    const userId = ctx.state.user?.id;
+    if (!userId) return ctx.unauthorized('not logged in');
+
+    const memberId = Number(ctx.params?.id);
+    if (!memberId) return ctx.badRequest('member id is required');
+    if (memberId === userId) return ctx.badRequest('нельзя удалить самого себя');
+
+    const me: any = await es.findOne('plugin::users-permissions.user', userId, {
+      fields: ['teamRole'],
+      populate: { managedTeam: { fields: ['id'] } },
+    });
+    if (me?.teamRole !== 'pm') {
+      return ctx.forbidden('only a project manager can remove members');
+    }
+    const teamId = me?.managedTeam?.id;
+    if (!teamId) return ctx.badRequest('your team is not set yet');
+
+    const member: any = await es.findOne('plugin::users-permissions.user', memberId, {
+      fields: ['id'],
+      populate: { team: { fields: ['id'] } },
+    });
+    if (!member || member.team?.id !== teamId) {
+      return ctx.forbidden('этот участник не из вашей команды');
+    }
+
+    await es.update('plugin::users-permissions.user', memberId, {
+      data: { team: null },
+    });
+
+    ctx.body = { ok: true, removed: memberId };
   };
 
   // ── /api/users/me/team/rename — PM renames their managed team ──────────
@@ -575,6 +756,34 @@ export default (plugin: any) => {
     ctx.body = { ok: true, avatar: { id: uploaded.id, url: uploaded.url } };
   };
 
+  // ── /api/users/me/profile-header — save current user's header customization ─
+  plugin.controllers.user.setProfileHeader = async (ctx: any) => {
+    const userId = ctx.state.user?.id;
+    if (!userId) return ctx.unauthorized('not logged in');
+
+    const profileHeader = normalizeProfileHeader(ctx.request.body ?? {});
+
+    // Profile pictures are unlocked only by earning badges. Allowed = "none",
+    // the starter picture, or any picture rewarded by a badge the user owns.
+    // A locked picture silently falls back to "none" so the API can't be gamed.
+    const me: any = await es.findOne('plugin::users-permissions.user', userId, {
+      populate: { earnedBadges: { fields: ['rewardImage'] } },
+    });
+    const unlocked = new Set<string>(['', STARTER_PROFILE_IMAGE]);
+    for (const b of me?.earnedBadges ?? []) {
+      if (typeof b?.rewardImage === 'string' && b.rewardImage) unlocked.add(b.rewardImage);
+    }
+    if (!unlocked.has(profileHeader.image)) profileHeader.image = '';
+
+    await es.update(
+      'plugin::users-permissions.user',
+      userId,
+      { data: { profileHeader } },
+    );
+
+    ctx.body = { ok: true, profileHeader };
+  };
+
   plugin.routes['content-api'].routes.push(
     {
       method: 'POST',
@@ -586,6 +795,12 @@ export default (plugin: any) => {
       method: 'POST',
       path: '/users/me/avatar',
       handler: 'user.setAvatar',
+      config: { prefix: '', policies: [] },
+    },
+    {
+      method: 'POST',
+      path: '/users/me/profile-header',
+      handler: 'user.setProfileHeader',
       config: { prefix: '', policies: [] },
     },
     {
@@ -622,6 +837,12 @@ export default (plugin: any) => {
       method: 'POST',
       path: '/users/me/team/rename',
       handler: 'user.renameTeam',
+      config: { prefix: '', policies: [] },
+    },
+    {
+      method: 'DELETE',
+      path: '/users/me/team/members/:id',
+      handler: 'user.removeMember',
       config: { prefix: '', policies: [] },
     },
     {

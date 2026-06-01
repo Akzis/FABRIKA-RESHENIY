@@ -1,6 +1,5 @@
 import { defineStore } from 'pinia'
 import type {
-  Achievement,
   Badge,
   ChallengeLevel,
   ChallengeTask,
@@ -17,7 +16,6 @@ interface LandingState {
   levels: ChallengeLevel[]
   challenges: ChallengeTask[]
   badges: Badge[]
-  achievements: Achievement[]
   daily: DailyQuest[]
   leaderboard: LeaderboardRow[]
   roles: RoleCard[]
@@ -37,7 +35,6 @@ export const useLandingStore = defineStore('landing', {
     levels: [],
     challenges: [],
     badges: [],
-    achievements: [],
     daily: [],
     leaderboard: [],
     roles: [],

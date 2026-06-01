@@ -57,30 +57,20 @@ export const seedLevels = [
   },
 ]
 
+// `code` is a stable id used by the awarding logic; `conditionType` +
+// `conditionValue` describe how a badge is unlocked automatically
+// (see awardBadges() in extensions/users-permissions/strapi-server.ts).
+// Badges with conditionType 'none' are awarded manually (secret / locked).
+// `xpReward` — XP granted the moment the badge is earned.
+// `rewardImage` — a profile-header picture this badge unlocks. Profile pictures
+// can ONLY be obtained by earning badges; everyone starts with STARTER_PROFILE_IMAGE.
+export const STARTER_PROFILE_IMAGE = '/voxel/dino.png'
 export const seedBadges = [
-  { order: 1, symbol: '★', label: 'Первый шаг', got: true, accent: 'mint' },
-  { order: 2, symbol: '⚡', label: 'Молния', got: true, accent: 'cyan' },
-  { order: 3, symbol: '♛', label: 'Лидер', got: true, accent: 'purple' },
-  { order: 4, symbol: '▲', label: '7 дней', got: true, accent: 'mint' },
-  { order: 5, symbol: '♥', label: 'Душа кмд', got: true, accent: 'cyan' },
-  { order: 6, symbol: '◉', label: 'Снайпер', got: true, accent: 'purple' },
-  { order: 7, symbol: '✦', label: 'Звезда', got: true, accent: 'mint' },
-  { order: 8, symbol: '⬡', label: 'Архитектор', got: true, accent: 'cyan' },
-  { order: 9, symbol: '▣', label: 'Марафон', got: false, accent: 'cyan' },
-  { order: 10, symbol: '♞', label: 'Стратег', got: false, accent: 'cyan' },
-  { order: 11, symbol: '✺', label: '100 задач', got: false, accent: 'cyan' },
-  { order: 12, symbol: '◈', label: '???', locked: true, accent: 'cyan' },
-  { order: 13, symbol: '⚔', label: '???', locked: true, accent: 'cyan' },
-  { order: 14, symbol: '☄', label: '???', locked: true, accent: 'cyan' },
-  { order: 15, symbol: '⌬', label: '???', locked: true, accent: 'cyan' },
-  { order: 16, symbol: '⬢', label: '???', locked: true, accent: 'cyan' },
-]
-
-export const seedAchievements = [
-  { order: 1, icon: '⚡', title: 'Молниеносный', text: 'Закрой 3 челленджа за один день', gain: '+200', accent: 'cyan' },
-  { order: 2, icon: '▲', title: 'Серия из семи', text: 'Сделай дейли 7 дней подряд', gain: '+500', accent: 'mint' },
-  { order: 3, icon: '♛', title: 'Топ-1 недели', text: 'Возглавь рейтинг команды на 7 дней', gain: '+1k', accent: 'purple' },
-  { order: 4, icon: '◉', title: 'Снайпер', text: 'Сдай HARD-челлендж за полдня', gain: '+750', accent: 'cyan' },
+  { order: 1, code: 'first-light', label: 'Первый шаг', accent: 'mint', conditionType: 'first_light_challenge', conditionValue: 0, xpReward: 100, rewardImage: '/voxel/keycaps.png' },
+  { order: 2, code: 'level-5', label: '5 уровень', accent: 'purple', conditionType: 'reach_level', conditionValue: 5, xpReward: 200, rewardImage: '/voxel/gamepad.png' },
+  { order: 3, code: 'dailies-10', label: 'Дисциплина', accent: 'cyan', conditionType: 'complete_dailies', conditionValue: 10, xpReward: 150, rewardImage: '/voxel/notepad.png' },
+  { order: 4, code: 'streak-7', label: '7 дней', accent: 'mint', conditionType: 'streak_days', conditionValue: 7, xpReward: 250, rewardImage: '/voxel/arrow.png' },
+  { order: 5, code: 'first-hard', label: 'Снайпер', accent: 'purple', conditionType: 'first_hard_challenge', conditionValue: 0, xpReward: 500, rewardImage: '/voxel/mug.png' },
 ]
 
 // Daily quests are global templates. Per-user "done" comes from
@@ -103,6 +93,59 @@ export const seedChallenges = [
   { order: 6, level: 'hard', xp: 500, title: 'Спроектируй и презентуй фичу команде', description: 'Продумай архитектуру, оформи решение и защити его перед командой.' },
 ]
 
+export const seedShopItems = [
+  {
+    order: 1,
+    slug: 'keychain-dino',
+    title: 'Воксельный брелок',
+    description: 'Фирменный мини-динозавр для ключей или рюкзака.',
+    price: 180,
+    image: '/voxel/dino.png',
+    tag: 'мерч',
+    isActive: true,
+  },
+  {
+    order: 2,
+    slug: 'stickerpack',
+    title: 'Стикерпак',
+    description: 'Набор наклеек с иконками Фабрики решений.',
+    price: 120,
+    image: '/voxel/chat.png',
+    tag: 'быстро',
+    isActive: true,
+  },
+  {
+    order: 3,
+    slug: 'mug',
+    title: 'Кружка',
+    description: 'Кружка для кофе, чая и сложных дейли-челленджей.',
+    price: 420,
+    image: '/voxel/mug.png',
+    tag: 'хит',
+    isActive: true,
+  },
+  {
+    order: 4,
+    slug: 'notepad',
+    title: 'Блокнот',
+    description: 'Для идей, схем и планов на следующий спринт.',
+    price: 260,
+    image: '/voxel/notepad.png',
+    tag: 'офис',
+    isActive: true,
+  },
+  {
+    order: 5,
+    slug: 'keycaps',
+    title: 'Кейкапы',
+    description: 'Акцентные клавиши для тех, кто закрыл хард.',
+    price: 650,
+    image: '/voxel/keycaps.png',
+    tag: 'rare',
+    isActive: true,
+  },
+]
+
 export const seedRoles = [
   {
     order: 1, key: 'member', tag: '● Участник', title: 'Берёт\nчелленджи\nи качается',
@@ -112,7 +155,7 @@ export const seedRoles = [
       'Получает <b>дейли-задания</b> каждое утро',
       'Видит <b>свой XP, серию и место в рейтинге</b>',
       '<b>Тратит баллы</b> в магазине наград',
-      'Собирает <b>бейджи</b> и эксклюзивные ачивки',
+      'Собирает <b>бейджи</b>',
     ],
   },
   {

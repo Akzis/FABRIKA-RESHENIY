@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue'
 
-const { team, members, loading, fetch, rename } = useTeam()
+const { team, members, loading, fetch, rename, removeMember } = useTeam()
 const strapiBase = (useRuntimeConfig().public as any)?.strapi?.url ?? 'http://localhost:1337'
 
 onMounted(() => { void fetch() })
@@ -41,6 +41,23 @@ const saveName = async () => {
 // aggregate stats for the header
 const totalXp = computed(() => members.value.reduce((s, m) => s + (m.xp || 0), 0))
 const totalClosed = computed(() => members.value.reduce((s, m) => s + (m.challengesClosed || 0), 0))
+
+// ── remove member (inline confirm) ──
+const confirmId = ref<number | null>(null)
+const removingId = ref<number | null>(null)
+const removeError = ref<string | null>(null)
+
+const askRemove = (id: number) => { confirmId.value = id; removeError.value = null }
+const cancelRemove = () => { confirmId.value = null }
+const doRemove = async (id: number) => {
+  if (removingId.value) return
+  removingId.value = id
+  removeError.value = null
+  const err = await removeMember(id)
+  removingId.value = null
+  if (err) { removeError.value = err; return }
+  confirmId.value = null
+}
 
 </script>
 
@@ -125,8 +142,27 @@ const totalClosed = computed(() => members.value.reduce((s, m) => s + (m.challen
           <div
             v-for="(m, i) in members"
             :key="m.id"
-            class="grid grid-cols-2 sm:grid-cols-[1.6fr_repeat(4,0.8fr)] gap-3 items-center px-3 py-3 rounded-xl bg-bg-3 border border-line hover:border-line-strong transition-colors"
+            class="group relative grid grid-cols-2 sm:grid-cols-[1.6fr_repeat(4,0.8fr)] gap-3 items-center px-3 py-3 pr-10 rounded-xl bg-bg-3 border border-line hover:border-line-strong transition-colors"
           >
+            <!-- remove member (PM) -->
+            <div class="absolute top-2 right-2 z-10">
+              <button
+                v-if="confirmId !== m.id"
+                type="button"
+                class="tr-remove font-mono opacity-0 group-hover:opacity-100 focus:opacity-100"
+                title="Удалить из команды"
+                aria-label="Удалить из команды"
+                @click="askRemove(m.id)"
+              >✕</button>
+              <div v-else class="flex items-center gap-1.5">
+                <span class="font-mono text-[10px] uppercase text-ink-3 hidden sm:inline">Удалить?</span>
+                <button type="button" class="tr-remove-yes font-mono" :disabled="removingId === m.id" @click="doRemove(m.id)">
+                  {{ removingId === m.id ? '…' : 'Да' }}
+                </button>
+                <button type="button" class="tr-remove-no font-mono" :disabled="removingId === m.id" @click="cancelRemove">Нет</button>
+              </div>
+            </div>
+
             <div class="flex items-center gap-3 min-w-0 col-span-2 sm:col-span-1">
               <div class="w-9 h-9 rounded-[10px] overflow-hidden flex items-center justify-center font-pix text-white text-sm shrink-0" style="background: linear-gradient(135deg, var(--color-purple-brand), var(--color-cyan-brand))">
                 <img v-if="avatarSrc(m.avatarUrl)" :src="avatarSrc(m.avatarUrl)!" alt="" class="w-full h-full object-cover" />
@@ -143,6 +179,8 @@ const totalClosed = computed(() => members.value.reduce((s, m) => s + (m.challen
             <div class="text-right"><span class="sm:hidden font-mono text-[9px] uppercase text-ink-3 mr-1.5">Серия</span><span class="font-pix text-[16px] text-purple-brand">{{ m.streak }}</span></div>
           </div>
         </div>
+
+        <p v-if="removeError" class="font-mono text-[12px] text-[#ff7575] mt-3">{{ removeError }}</p>
       </div>
     </div>
   </section>
@@ -189,4 +227,48 @@ const totalClosed = computed(() => members.value.reduce((s, m) => s + (m.challen
   cursor: pointer;
 }
 .tr-cancel:hover:not(:disabled) { color: var(--color-ink); }
+
+.tr-remove {
+  width: 24px;
+  height: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  border: 1px solid var(--color-line-strong);
+  background: var(--color-bg-2);
+  color: var(--color-ink-3);
+  font-size: 11px;
+  line-height: 1;
+  cursor: pointer;
+  transition: color 150ms, border-color 150ms, opacity 150ms;
+}
+.tr-remove:hover { color: #ff7575; border-color: #ff7575; }
+
+.tr-remove-yes {
+  padding: 5px 10px;
+  border-radius: 8px;
+  border: 0;
+  background: #ff7575;
+  color: #fff;
+  font-size: 10px;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: opacity 150ms;
+}
+.tr-remove-yes:disabled { opacity: .5; cursor: progress; }
+
+.tr-remove-no {
+  padding: 5px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--color-line-strong);
+  background: var(--color-bg-2);
+  color: var(--color-ink-2);
+  font-size: 10px;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+.tr-remove-no:hover:not(:disabled) { color: var(--color-ink); }
 </style>

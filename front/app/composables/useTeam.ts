@@ -64,5 +64,20 @@ export function useTeam() {
     }
   }
 
-  return { team, members, loading, fetch, rename }
+  /** Remove a member from the managed team. Returns an error message on failure, else null. */
+  const removeMember = async (memberId: number): Promise<string | null> => {
+    if (!token.value) return 'Нет авторизации'
+    try {
+      await $fetch(`${strapiBase}/api/users/me/team/members/${memberId}`, {
+        method: 'DELETE',
+        headers: authHeaders(),
+      })
+      members.value = members.value.filter((m) => m.id !== memberId)
+      return null
+    } catch (e: any) {
+      return e?.data?.error?.message ?? e?.message ?? 'Не удалось удалить участника'
+    }
+  }
+
+  return { team, members, loading, fetch, rename, removeMember }
 }

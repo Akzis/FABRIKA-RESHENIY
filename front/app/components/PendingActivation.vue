@@ -89,7 +89,7 @@ const handleLogout = async () => {
           class="font-mono text-[11px] tracking-[0.1em] uppercase text-ink-3 hover:text-ink transition-colors cursor-pointer bg-transparent border-0 p-0"
           @click="handleLogout"
         >
-          ← Выйти из аккаунта
+          Выйти из аккаунта
         </button>
       </div>
     </main>

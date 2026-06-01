@@ -12,7 +12,7 @@ export default defineNuxtConfig({
     '@nuxtjs/strapi',
   ],
 
-  css: ['@/assets/css/main.css'],
+  css: ['driver.js/dist/driver.css', '@/assets/css/main.css'],
 
   app: {
     head: {

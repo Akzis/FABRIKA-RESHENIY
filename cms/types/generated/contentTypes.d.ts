@@ -440,41 +440,6 @@ export interface AdminUser extends Struct.CollectionTypeSchema {
   };
 }
 
-export interface ApiAchievementAchievement extends Struct.CollectionTypeSchema {
-  collectionName: 'achievements';
-  info: {
-    description: '\u0414\u043E\u0441\u0442\u0438\u0436\u0435\u043D\u0438\u044F';
-    displayName: 'Achievement';
-    pluralName: 'achievements';
-    singularName: 'achievement';
-  };
-  options: {
-    draftAndPublish: true;
-  };
-  attributes: {
-    accent: Schema.Attribute.Enumeration<['cyan', 'mint', 'purple']> &
-      Schema.Attribute.DefaultTo<'cyan'>;
-    createdAt: Schema.Attribute.DateTime;
-    createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
-      Schema.Attribute.Private;
-    gain: Schema.Attribute.String & Schema.Attribute.Required;
-    icon: Schema.Attribute.String & Schema.Attribute.Required;
-    locale: Schema.Attribute.String & Schema.Attribute.Private;
-    localizations: Schema.Attribute.Relation<
-      'oneToMany',
-      'api::achievement.achievement'
-    > &
-      Schema.Attribute.Private;
-    order: Schema.Attribute.Integer & Schema.Attribute.DefaultTo<1>;
-    publishedAt: Schema.Attribute.DateTime;
-    text: Schema.Attribute.Text & Schema.Attribute.Required;
-    title: Schema.Attribute.String & Schema.Attribute.Required;
-    updatedAt: Schema.Attribute.DateTime;
-    updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
-      Schema.Attribute.Private;
-  };
-}
-
 export interface ApiBadgeBadge extends Struct.CollectionTypeSchema {
   collectionName: 'badges';
   info: {
@@ -489,10 +454,33 @@ export interface ApiBadgeBadge extends Struct.CollectionTypeSchema {
   attributes: {
     accent: Schema.Attribute.Enumeration<['cyan', 'mint', 'purple']> &
       Schema.Attribute.DefaultTo<'cyan'>;
+    code: Schema.Attribute.String & Schema.Attribute.Unique;
+    conditionType: Schema.Attribute.Enumeration<
+      [
+        'none',
+        'first_light_challenge',
+        'first_medium_challenge',
+        'first_hard_challenge',
+        'reach_level',
+        'complete_dailies',
+        'streak_days',
+        'complete_challenges',
+      ]
+    > &
+      Schema.Attribute.DefaultTo<'none'>;
+    conditionValue: Schema.Attribute.Integer &
+      Schema.Attribute.SetMinMax<
+        {
+          min: 0;
+        },
+        number
+      > &
+      Schema.Attribute.DefaultTo<0>;
     createdAt: Schema.Attribute.DateTime;
     createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
       Schema.Attribute.Private;
     got: Schema.Attribute.Boolean & Schema.Attribute.DefaultTo<false>;
+    image: Schema.Attribute.Media<'images'>;
     label: Schema.Attribute.String & Schema.Attribute.Required;
     locale: Schema.Attribute.String & Schema.Attribute.Private;
     localizations: Schema.Attribute.Relation<'oneToMany', 'api::badge.badge'> &
@@ -500,10 +488,18 @@ export interface ApiBadgeBadge extends Struct.CollectionTypeSchema {
     locked: Schema.Attribute.Boolean & Schema.Attribute.DefaultTo<false>;
     order: Schema.Attribute.Integer & Schema.Attribute.DefaultTo<1>;
     publishedAt: Schema.Attribute.DateTime;
-    symbol: Schema.Attribute.String & Schema.Attribute.Required;
+    rewardImage: Schema.Attribute.String;
     updatedAt: Schema.Attribute.DateTime;
     updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
       Schema.Attribute.Private;
+    xpReward: Schema.Attribute.Integer &
+      Schema.Attribute.SetMinMax<
+        {
+          min: 0;
+        },
+        number
+      > &
+      Schema.Attribute.DefaultTo<0>;
   };
 }
 
@@ -748,6 +744,51 @@ export interface ApiRoleCardRoleCard extends Struct.CollectionTypeSchema {
     order: Schema.Attribute.Integer & Schema.Attribute.DefaultTo<1>;
     publishedAt: Schema.Attribute.DateTime;
     tag: Schema.Attribute.String & Schema.Attribute.Required;
+    title: Schema.Attribute.String & Schema.Attribute.Required;
+    updatedAt: Schema.Attribute.DateTime;
+    updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+  };
+}
+
+export interface ApiShopItemShopItem extends Struct.CollectionTypeSchema {
+  collectionName: 'shop_items';
+  info: {
+    description: '\u0422\u043E\u0432\u0430\u0440\u044B \u043C\u0430\u0433\u0430\u0437\u0438\u043D\u0430 \u043D\u0430\u0433\u0440\u0430\u0434, \u043A\u043E\u0442\u043E\u0440\u044B\u0435 \u0443\u0447\u0430\u0441\u0442\u043D\u0438\u043A\u0438 \u043F\u043E\u043A\u0443\u043F\u0430\u044E\u0442 \u0437\u0430 XP';
+    displayName: 'Shop Item';
+    pluralName: 'shop-items';
+    singularName: 'shop-item';
+  };
+  options: {
+    draftAndPublish: false;
+  };
+  attributes: {
+    createdAt: Schema.Attribute.DateTime;
+    createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+    description: Schema.Attribute.Text;
+    image: Schema.Attribute.String & Schema.Attribute.Required;
+    isActive: Schema.Attribute.Boolean & Schema.Attribute.DefaultTo<true>;
+    locale: Schema.Attribute.String & Schema.Attribute.Private;
+    localizations: Schema.Attribute.Relation<
+      'oneToMany',
+      'api::shop-item.shop-item'
+    > &
+      Schema.Attribute.Private;
+    order: Schema.Attribute.Integer & Schema.Attribute.DefaultTo<1>;
+    price: Schema.Attribute.Integer &
+      Schema.Attribute.Required &
+      Schema.Attribute.SetMinMax<
+        {
+          min: 0;
+        },
+        number
+      > &
+      Schema.Attribute.DefaultTo<100>;
+    publishedAt: Schema.Attribute.DateTime;
+    slug: Schema.Attribute.UID<'title'> & Schema.Attribute.Required;
+    tag: Schema.Attribute.String &
+      Schema.Attribute.DefaultTo<'\u043C\u0435\u0440\u0447'>;
     title: Schema.Attribute.String & Schema.Attribute.Required;
     updatedAt: Schema.Attribute.DateTime;
     updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
@@ -1285,6 +1326,7 @@ export interface PluginUsersPermissionsUser
       Schema.Attribute.SetMinMaxLength<{
         minLength: 6;
       }>;
+    lastDailyDate: Schema.Attribute.Date;
     level: Schema.Attribute.Integer &
       Schema.Attribute.SetMinMax<
         {
@@ -1307,6 +1349,7 @@ export interface PluginUsersPermissionsUser
       }>;
     profileActivated: Schema.Attribute.Boolean &
       Schema.Attribute.DefaultTo<false>;
+    profileHeader: Schema.Attribute.JSON;
     provider: Schema.Attribute.String;
     publishedAt: Schema.Attribute.DateTime;
     resetPasswordToken: Schema.Attribute.String & Schema.Attribute.Private;
@@ -1388,7 +1431,6 @@ declare module '@strapi/strapi' {
       'admin::transfer-token': AdminTransferToken;
       'admin::transfer-token-permission': AdminTransferTokenPermission;
       'admin::user': AdminUser;
-      'api::achievement.achievement': ApiAchievementAchievement;
       'api::badge.badge': ApiBadgeBadge;
       'api::challenge-level.challenge-level': ApiChallengeLevelChallengeLevel;
       'api::challenge-submission.challenge-submission': ApiChallengeSubmissionChallengeSubmission;
@@ -1396,6 +1438,7 @@ declare module '@strapi/strapi' {
       'api::daily-quest.daily-quest': ApiDailyQuestDailyQuest;
       'api::how-step.how-step': ApiHowStepHowStep;
       'api::role-card.role-card': ApiRoleCardRoleCard;
+      'api::shop-item.shop-item': ApiShopItemShopItem;
       'api::team.team': ApiTeamTeam;
       'plugin::content-releases.release': PluginContentReleasesRelease;
       'plugin::content-releases.release-action': PluginContentReleasesReleaseAction;
