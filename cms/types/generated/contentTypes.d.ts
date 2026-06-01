@@ -440,6 +440,52 @@ export interface AdminUser extends Struct.CollectionTypeSchema {
   };
 }
 
+export interface ApiActivityEventActivityEvent
+  extends Struct.CollectionTypeSchema {
+  collectionName: 'activity_events';
+  info: {
+    description: '\u0417\u0430\u043F\u0438\u0441\u044C \u043E \u0432\u044B\u043F\u043E\u043B\u043D\u0435\u043D\u0438\u0438 \u0437\u0430\u0434\u0430\u043D\u0438\u044F \u0443\u0447\u0430\u0441\u0442\u043D\u0438\u043A\u043E\u043C \u0432 \u043A\u043E\u043D\u043A\u0440\u0435\u0442\u043D\u044B\u0439 \u0434\u0435\u043D\u044C \u2014 \u0438\u0441\u0442\u043E\u0447\u043D\u0438\u043A \u0434\u043B\u044F \u0442\u0435\u043F\u043B\u043E\u0432\u043E\u0439 \u043A\u0430\u0440\u0442\u044B \u0430\u043A\u0442\u0438\u0432\u043D\u043E\u0441\u0442\u0438 (heatmap)';
+    displayName: 'Activity Event';
+    pluralName: 'activity-events';
+    singularName: 'activity-event';
+  };
+  options: {
+    draftAndPublish: false;
+  };
+  attributes: {
+    createdAt: Schema.Attribute.DateTime;
+    createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+    day: Schema.Attribute.Date & Schema.Attribute.Required;
+    kind: Schema.Attribute.Enumeration<['challenge', 'daily']> &
+      Schema.Attribute.Required;
+    locale: Schema.Attribute.String & Schema.Attribute.Private;
+    localizations: Schema.Attribute.Relation<
+      'oneToMany',
+      'api::activity-event.activity-event'
+    > &
+      Schema.Attribute.Private;
+    publishedAt: Schema.Attribute.DateTime;
+    sourceId: Schema.Attribute.Integer;
+    team: Schema.Attribute.Relation<'manyToOne', 'api::team.team'>;
+    updatedAt: Schema.Attribute.DateTime;
+    updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+    user: Schema.Attribute.Relation<
+      'manyToOne',
+      'plugin::users-permissions.user'
+    >;
+    xp: Schema.Attribute.Integer &
+      Schema.Attribute.SetMinMax<
+        {
+          min: 0;
+        },
+        number
+      > &
+      Schema.Attribute.DefaultTo<0>;
+  };
+}
+
 export interface ApiBadgeBadge extends Struct.CollectionTypeSchema {
   collectionName: 'badges';
   info: {
@@ -657,16 +703,22 @@ export interface ApiDailyQuestDailyQuest extends Struct.CollectionTypeSchema {
     draftAndPublish: false;
   };
   attributes: {
+    correctAnswer: Schema.Attribute.Integer;
     createdAt: Schema.Attribute.DateTime;
     createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
       Schema.Attribute.Private;
+    date: Schema.Attribute.Date;
     description: Schema.Attribute.Text;
+    kind: Schema.Attribute.Enumeration<['action', 'quiz']> &
+      Schema.Attribute.Required &
+      Schema.Attribute.DefaultTo<'action'>;
     locale: Schema.Attribute.String & Schema.Attribute.Private;
     localizations: Schema.Attribute.Relation<
       'oneToMany',
       'api::daily-quest.daily-quest'
     > &
       Schema.Attribute.Private;
+    options: Schema.Attribute.JSON;
     order: Schema.Attribute.Integer & Schema.Attribute.DefaultTo<1>;
     points: Schema.Attribute.Integer &
       Schema.Attribute.Required &
@@ -790,6 +842,58 @@ export interface ApiShopItemShopItem extends Struct.CollectionTypeSchema {
     tag: Schema.Attribute.String &
       Schema.Attribute.DefaultTo<'\u043C\u0435\u0440\u0447'>;
     title: Schema.Attribute.String & Schema.Attribute.Required;
+    updatedAt: Schema.Attribute.DateTime;
+    updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+  };
+}
+
+export interface ApiShopOrderShopOrder extends Struct.CollectionTypeSchema {
+  collectionName: 'shop_orders';
+  info: {
+    description: '\u041F\u043E\u043A\u0443\u043F\u043A\u0430 \u0442\u043E\u0432\u0430\u0440\u0430 \u0443\u0447\u0430\u0441\u0442\u043D\u0438\u043A\u043E\u043C \u0437\u0430 XP \u2014 \u043E\u0436\u0438\u0434\u0430\u0435\u043C\u0430\u044F \u0434\u043E\u0441\u0442\u0430\u0432\u043A\u0430, \u043A\u043E\u0442\u043E\u0440\u0443\u044E \u0432\u044B\u0434\u0430\u0451\u0442 \u043F\u0440\u043E\u0435\u043A\u0442\u043D\u044B\u0439 \u043C\u0435\u043D\u0435\u0434\u0436\u0435\u0440';
+    displayName: 'Shop Order';
+    pluralName: 'shop-orders';
+    singularName: 'shop-order';
+  };
+  options: {
+    draftAndPublish: false;
+  };
+  attributes: {
+    createdAt: Schema.Attribute.DateTime;
+    createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+    deliveredAt: Schema.Attribute.DateTime;
+    itemImage: Schema.Attribute.String;
+    itemTag: Schema.Attribute.String;
+    itemTitle: Schema.Attribute.String & Schema.Attribute.Required;
+    locale: Schema.Attribute.String & Schema.Attribute.Private;
+    localizations: Schema.Attribute.Relation<
+      'oneToMany',
+      'api::shop-order.shop-order'
+    > &
+      Schema.Attribute.Private;
+    participant: Schema.Attribute.Relation<
+      'manyToOne',
+      'plugin::users-permissions.user'
+    >;
+    price: Schema.Attribute.Integer &
+      Schema.Attribute.SetMinMax<
+        {
+          min: 0;
+        },
+        number
+      > &
+      Schema.Attribute.DefaultTo<0>;
+    publishedAt: Schema.Attribute.DateTime;
+    shopItem: Schema.Attribute.Relation<
+      'manyToOne',
+      'api::shop-item.shop-item'
+    >;
+    status: Schema.Attribute.Enumeration<['pending', 'delivered']> &
+      Schema.Attribute.Required &
+      Schema.Attribute.DefaultTo<'pending'>;
+    team: Schema.Attribute.Relation<'manyToOne', 'api::team.team'>;
     updatedAt: Schema.Attribute.DateTime;
     updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
       Schema.Attribute.Private;
@@ -1357,6 +1461,14 @@ export interface PluginUsersPermissionsUser
       'manyToOne',
       'plugin::users-permissions.role'
     >;
+    spentXp: Schema.Attribute.Integer &
+      Schema.Attribute.SetMinMax<
+        {
+          min: 0;
+        },
+        number
+      > &
+      Schema.Attribute.DefaultTo<0>;
     streak: Schema.Attribute.Integer &
       Schema.Attribute.SetMinMax<
         {
@@ -1431,6 +1543,7 @@ declare module '@strapi/strapi' {
       'admin::transfer-token': AdminTransferToken;
       'admin::transfer-token-permission': AdminTransferTokenPermission;
       'admin::user': AdminUser;
+      'api::activity-event.activity-event': ApiActivityEventActivityEvent;
       'api::badge.badge': ApiBadgeBadge;
       'api::challenge-level.challenge-level': ApiChallengeLevelChallengeLevel;
       'api::challenge-submission.challenge-submission': ApiChallengeSubmissionChallengeSubmission;
@@ -1439,6 +1552,7 @@ declare module '@strapi/strapi' {
       'api::how-step.how-step': ApiHowStepHowStep;
       'api::role-card.role-card': ApiRoleCardRoleCard;
       'api::shop-item.shop-item': ApiShopItemShopItem;
+      'api::shop-order.shop-order': ApiShopOrderShopOrder;
       'api::team.team': ApiTeamTeam;
       'plugin::content-releases.release': PluginContentReleasesRelease;
       'plugin::content-releases.release-action': PluginContentReleasesReleaseAction;

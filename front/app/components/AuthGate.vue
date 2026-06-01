@@ -100,7 +100,7 @@ const switchMode = (m: Mode) => {
     />
 
     <header class="border-b border-line" style="background: var(--color-nav-bg)">
-      <div class="max-w-[1320px] mx-auto px-8 flex items-center justify-between h-[72px]">
+      <div class="max-w-[1320px] mx-auto px-4 sm:px-8 flex items-center justify-between h-[72px]">
         <div class="flex items-center gap-3">
           <BrandLogo light="/voxel/logo.png" dark="/voxel/logowhite.png" img-class="logo-mark h-7 [image-rendering:pixelated]" />
           <span class="hidden md:inline font-mono text-[11px] tracking-[0.08em] uppercase text-ink-3 border-l border-line-strong pl-3 whitespace-nowrap">
@@ -117,7 +117,7 @@ const switchMode = (m: Mode) => {
       <div class="scene-blob absolute rounded-full blur-[120px] opacity-30 w-[460px] h-[460px] bg-cyan-brand -top-20 -right-20 pointer-events-none"></div>
       <div class="scene-blob absolute rounded-full blur-[120px] opacity-25 w-[420px] h-[420px] bg-purple-brand -bottom-32 -left-20 pointer-events-none"></div>
 
-      <div class="relative z-10 w-full max-w-[460px] bg-bg-2 border border-line-strong rounded-[22px] p-10 shadow-[0_30px_80px_rgba(0,0,0,0.4)]">
+      <div class="relative z-10 w-full max-w-[460px] bg-bg-2 border border-line-strong rounded-[22px] p-6 sm:p-10 shadow-[0_30px_80px_rgba(0,0,0,0.4)]">
         <div class="grid grid-cols-2 gap-2 p-1 bg-bg-3 rounded-xl mb-7">
           <button
             type="button"

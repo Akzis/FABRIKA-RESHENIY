@@ -1,20 +1,37 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import type { UserProfile } from '~/types/user'
-import type { LeaderboardRow } from '~/types/landing'
+import type { LeaderboardRow, TeamLeaderboardRow } from '~/types/landing'
 
-const { leaderboard } = useLandingData()
+const { leaderboard, teamLeaderboard } = useLandingData()
 const user = useStrapiUser() as unknown as { value: UserProfile | null }
 const { avatarUrl: myAvatarUrl } = useUserAvatar()
 
+// Что показываем в рейтинге — отдельных игроков или команды целиком.
+type Scope = 'players' | 'teams'
+const scope = ref<Scope>('players')
+const scopes: { key: Scope; label: string }[] = [
+  { key: 'players', label: 'Игроки' },
+  { key: 'teams', label: 'Команды' },
+]
+
 // Сортировка рейтинга: по XP, по закрытым челленджам или по серии (стрику).
+// «По стрику» применимо только к игрокам — у команд стрика нет.
 type SortKey = 'xp' | 'closed' | 'streak'
-const sorts: { key: SortKey; label: string }[] = [
+const allSorts: { key: SortKey; label: string }[] = [
   { key: 'xp', label: 'По XP' },
   { key: 'closed', label: 'По челленджам' },
   { key: 'streak', label: 'По стрику' },
 ]
+const sorts = computed(() =>
+  scope.value === 'teams' ? allSorts.filter(s => s.key !== 'streak') : allSorts,
+)
 const activeSort = ref<SortKey>('xp')
+// При переключении на команды сбрасываем неприменимый «стрик» на XP.
+const setScope = (s: Scope) => {
+  scope.value = s
+  if (s === 'teams' && activeSort.value === 'streak') activeSort.value = 'xp'
+}
 
 const rankColor = (rank: number) => {
   if (rank === 1) return 'text-cyan-brand'
@@ -32,7 +49,7 @@ const fmt = (n: number) => n.toLocaleString('ru-RU').replace(/,/g, ' ')
 
 // ── Tile = avatar photo (fallback: gradient + initial) ──────────────────────
 const tileStyle = (row: LeaderboardRow) =>
-  row.avatarUrl ? { background: '#0b0b0e' } : { background: row.gradient }
+  row.avatarUrl ? { background: '#0b0b0e' } : { background: '#fff' }
 
 // ── Row banner = the player's profileHeader (color + positioned voxel art),
 //    rendered exactly like the profile header card. ───────────────────────────
@@ -124,7 +141,19 @@ const rows = computed<LeaderboardRow[]>(() =>
     .map((r, i) => ({ ...r, rank: i + 1 })),
 )
 
-const emptyState = computed(() => rows.value.length === 0)
+// Team rows — sorted by the active metric (xp/closed) and re-ranked, mirroring
+// the player table. Streak doesn't apply to teams, so it falls back to XP.
+const teamMetric = (t: TeamLeaderboardRow): number =>
+  activeSort.value === 'closed' ? t.closedValue : t.xpValue
+const teamRows = computed<TeamLeaderboardRow[]>(() =>
+  [...(teamLeaderboard.value ?? [])]
+    .sort((a, b) => teamMetric(b) - teamMetric(a))
+    .map((t, i) => ({ ...t, rank: i + 1 })),
+)
+
+const emptyState = computed(() =>
+  scope.value === 'teams' ? teamRows.value.length === 0 : rows.value.length === 0,
+)
 
 useReveal('.lb-side', { x: -50, y: 0, duration: 0.9 })
 useReveal('.lb-row:not(.header)', { stagger: 0.08, x: 60, y: 0, duration: 0.7, ease: 'power3.out' })
@@ -132,16 +161,16 @@ useGlowPulse('.lb-row.top1', { color: 'rgba(24, 239, 242, 0.35)', spread: 28, du
 </script>
 
 <template>
-  <section id="leaderboard" class="py-[110px] relative">
-    <div class="max-w-[1320px] mx-auto px-8">
+  <section id="leaderboard" class="py-16 sm:py-[110px] relative">
+    <div class="max-w-[1320px] mx-auto px-4 sm:px-8">
       <SectionHeader tag="Рейтинг" tag-color="var(--color-mint-brand)" sub="Топ участников обновляется в реальном времени по факту закрытия челленджей. Никаких ручных правок и любимчиков. Проектные менеджеры в рейтинг не входят.">
         <template #title>
           Автоматический<br /><span class="text-mint-brand">leaderboard</span>
         </template>
       </SectionHeader>
 
-      <div class="grid grid-cols-1 lg:grid-cols-[1fr_1.6fr] gap-7">
-        <div class="lb-side bg-bg-2 border border-line rounded-[22px] p-8 flex flex-col gap-5 min-h-[480px]">
+      <div class="grid grid-cols-1 lg:grid-cols-[1fr_1.6fr] gap-5 lg:gap-7">
+        <div class="lb-side bg-bg-2 border border-line rounded-[22px] p-5 sm:p-8 flex flex-col gap-5 lg:min-h-[480px]">
           <span class="inline-flex items-center gap-2 font-mono text-[11px] text-mint-brand tracking-[0.1em] uppercase">
             <i class="w-2 h-2 bg-mint-brand rounded-full shadow-[0_0_8px_var(--color-mint-brand)] animate-pulse-soft"></i>
             Live · из базы пользователей
@@ -155,28 +184,50 @@ useGlowPulse('.lb-row.top1', { color: 'rgba(24, 239, 242, 0.35)', spread: 28, du
             В рейтинг попадают только участники команд — PM ведут команды,
             поэтому их XP не учитывается.
           </p>
-          <div class="flex gap-1.5 mt-auto">
-            <button
-              v-for="s in sorts"
-              :key="s.key"
-              @click="activeSort = s.key"
-              :class="[
-                'flex-1 p-2.5 rounded-lg border font-mono text-xs tracking-[0.08em] uppercase cursor-pointer transition-all duration-150',
-                activeSort === s.key ? 'bg-cyan-brand text-btn-ink border-cyan-brand' : 'bg-bg-3 text-ink-3 border-line',
-              ]"
-            >
-              {{ s.label }}
-            </button>
+          <div class="flex flex-col gap-1.5 mt-auto">
+            <div class="flex gap-1.5">
+              <button
+                v-for="sc in scopes"
+                :key="sc.key"
+                @click="setScope(sc.key)"
+                :class="[
+                  'flex-1 p-2.5 rounded-lg border font-mono text-xs tracking-[0.08em] uppercase cursor-pointer transition-all duration-150',
+                  scope === sc.key ? 'bg-mint-brand text-btn-ink border-mint-brand' : 'bg-bg-3 text-ink-3 border-line',
+                ]"
+              >
+                {{ sc.label }}
+              </button>
+            </div>
+            <div class="flex gap-1.5">
+              <button
+                v-for="s in sorts"
+                :key="s.key"
+                @click="activeSort = s.key"
+                :class="[
+                  'flex-1 p-2.5 rounded-lg border font-mono text-xs tracking-[0.08em] uppercase cursor-pointer transition-all duration-150',
+                  activeSort === s.key ? 'bg-cyan-brand text-btn-ink border-cyan-brand' : 'bg-bg-3 text-ink-3 border-line',
+                ]"
+              >
+                {{ s.label }}
+              </button>
+            </div>
           </div>
         </div>
 
-        <div class="bg-bg-2 border border-line rounded-[22px] p-5">
-          <div class="hidden md:grid grid-cols-[56px_1fr_84px_104px_72px_90px] gap-[18px] items-center font-mono text-[10px] tracking-[0.14em] text-ink-3 uppercase py-2 px-[18px] pb-3.5 border-b border-line lb-row header">
+        <div class="bg-bg-2 border border-line rounded-[22px] p-3 sm:p-5">
+          <div v-if="scope === 'players'" class="hidden md:grid grid-cols-[56px_1fr_84px_104px_72px_90px] gap-[18px] items-center font-mono text-[10px] tracking-[0.14em] text-ink-3 uppercase py-2 px-[18px] pb-3.5 border-b border-line lb-row header">
             <span>Ранг</span>
-            <span>Игрок · команда</span>
+            <span>Команда · Игрок</span>
             <span>Уровень</span>
             <span>Челленджей</span>
             <span>Стрик</span>
+            <span class="text-right">XP всего</span>
+          </div>
+          <div v-else class="hidden md:grid grid-cols-[56px_1fr_104px_120px_90px] gap-[18px] items-center font-mono text-[10px] tracking-[0.14em] text-ink-3 uppercase py-2 px-[18px] pb-3.5 border-b border-line lb-row header">
+            <span>Ранг</span>
+            <span>Команда</span>
+            <span>Участников</span>
+            <span>Челленджей</span>
             <span class="text-right">XP всего</span>
           </div>
 
@@ -186,16 +237,49 @@ useGlowPulse('.lb-row.top1', { color: 'rgba(24, 239, 242, 0.35)', spread: 28, du
               Пока в рейтинге пусто
             </p>
             <p class="text-sm text-ink-2 m-0 mt-3">
-              Зарегистрируй первого участника команды — и он окажется на первой строке.
+              {{ scope === 'teams'
+                ? 'Собери команду из участников — и она появится в рейтинге.'
+                : 'Зарегистрируй первого участника команды — и он окажется на первой строке.' }}
             </p>
           </div>
 
-          <!-- rows -->
+          <!-- team rows -->
+          <template v-if="scope === 'teams'">
+            <div
+              v-for="team in teamRows"
+              :key="team.name + '-' + team.rank"
+              :class="[
+                'lb-row relative grid grid-cols-[44px_1fr_auto] md:grid-cols-[56px_1fr_104px_120px_90px] gap-3 md:gap-[18px] items-center py-3 px-3 sm:py-3.5 sm:px-[18px] rounded-xl transition-colors duration-150 hover:bg-bg-3',
+                team.rank === 1 ? 'top1' : '',
+              ]"
+            >
+              <span :class="['font-pix text-[22px] sm:text-[28px] w-11 sm:w-14', rankColor(team.rank)]">
+                {{ String(team.rank).padStart(2, '0') }}
+              </span>
+              <div class="flex gap-3.5 items-center min-w-0">
+                <div
+                  class="relative w-[38px] h-[38px] rounded-[10px] overflow-hidden font-pix text-lg flex items-center justify-center shrink-0 ring-1 ring-[rgba(255,255,255,0.12)] text-[#11131c]"
+                  :style="{ background: team.gradient }"
+                >
+                  {{ team.initial }}
+                </div>
+                <div class="text-sm font-semibold truncate">{{ team.name }}</div>
+              </div>
+              <span class="hidden md:block font-mono text-[12px] text-ink-2">{{ team.members }} в команде</span>
+              <span class="hidden md:block font-mono text-[12px] text-ink-2">{{ team.closedValue }} закрыто</span>
+              <span :class="['font-pix text-[18px] sm:text-[22px] text-right', team.rank === 1 ? 'text-cyan-brand' : 'text-ink']">
+                {{ team.xp }}
+              </span>
+            </div>
+          </template>
+
+          <!-- player rows -->
           <div
             v-for="row in rows"
+            v-show="scope === 'players'"
             :key="(row.userId ?? row.name) + '-' + row.rank"
             :class="[
-              'lb-row relative overflow-hidden grid grid-cols-[56px_1fr_84px_104px_72px_90px] gap-[18px] items-center py-3.5 px-[18px] rounded-xl transition-colors duration-150',
+              'lb-row relative overflow-hidden grid grid-cols-[44px_1fr_auto] md:grid-cols-[56px_1fr_84px_104px_72px_90px] gap-3 md:gap-[18px] items-center py-3 px-3 sm:py-3.5 sm:px-[18px] rounded-xl transition-colors duration-150',
               hasBanner(row) ? 'has-banner' : 'hover:bg-bg-3',
               row.rank === 1 ? 'top1' : '',
               row.me && !hasBanner(row) ? 'bg-[rgba(24,239,242,0.06)] border border-[rgba(24,239,242,0.25)]' : '',
@@ -213,10 +297,10 @@ useGlowPulse('.lb-row.top1', { color: 'rgba(24, 239, 242, 0.35)', spread: 28, du
               :style="rowArtStyle(row)"
             />
 
-            <span :class="['font-pix text-[28px] w-14', rankColor(row.rank)]" :style="row.me && !hasBanner(row) ? { color: 'var(--color-cyan-brand)' } : ink(row)">
+            <span :class="['font-pix text-[22px] sm:text-[28px] w-11 sm:w-14', rankColor(row.rank)]" :style="row.me && !hasBanner(row) ? { color: 'var(--color-cyan-brand)' } : ink(row)">
               {{ String(row.rank).padStart(2, '0') }}
             </span>
-            <div class="flex gap-3.5 items-center">
+            <div class="flex gap-3.5 items-center min-w-0">
               <div
                 class="relative w-[38px] h-[38px] rounded-[10px] overflow-hidden font-pix text-lg flex items-center justify-center shrink-0 ring-1 ring-[rgba(255,255,255,0.12)]"
                 :style="tileStyle(row)"
@@ -227,21 +311,21 @@ useGlowPulse('.lb-row.top1', { color: 'rgba(24, 239, 242, 0.35)', spread: 28, du
                   alt=""
                   class="absolute inset-0 w-full h-full object-cover"
                 />
-                <span v-else class="text-white">{{ row.initial }}</span>
+                <span v-else class="text-[#11131c]">{{ row.initial }}</span>
               </div>
-              <div>
-                <div class="text-sm font-semibold" :style="ink(row)">{{ row.name }}<span v-if="row.me" class="ml-2 text-cyan-brand text-[11px] font-mono tracking-[0.08em] uppercase">это ты</span></div>
-                <div class="font-mono text-[11px] text-ink-3" :style="ink(row, false)">{{ row.team }}</div>
+              <div class="min-w-0">
+                <div class="text-sm font-semibold truncate" :style="ink(row)">{{ row.name }}<span v-if="row.me" class="ml-2 text-cyan-brand text-[11px] font-mono tracking-[0.08em] uppercase">это ты</span></div>
+                <div class="font-mono text-[11px] text-ink-3 truncate" :style="ink(row, false)">{{ row.team }}</div>
               </div>
             </div>
-            <span class="font-mono text-[12px] text-ink-2" :style="ink(row, false)">{{ row.level }}</span>
-            <span class="font-mono text-[12px] text-ink-2" :style="ink(row, false)">{{ row.closed }}</span>
+            <span class="hidden md:block font-mono text-[12px] text-ink-2" :style="ink(row, false)">{{ row.level }}</span>
+            <span class="hidden md:block font-mono text-[12px] text-ink-2" :style="ink(row, false)">{{ row.closed }}</span>
             <span
-              class="font-mono text-[12px] inline-flex items-center gap-1"
+              class="hidden md:inline-flex font-mono text-[12px] items-center gap-1"
               :class="row.streak ? 'text-mint-brand' : 'text-ink-3'"
               :style="ink(row, false)"
             ><UIcon name="i-lucide-flame" class="w-3.5 h-3.5" /> {{ row.streak ?? 0 }}</span>
-            <span :class="['font-pix text-[22px] text-right', row.rank === 1 ? 'text-cyan-brand' : 'text-ink']" :style="ink(row)">
+            <span :class="['font-pix text-[18px] sm:text-[22px] text-right', row.rank === 1 ? 'text-cyan-brand' : 'text-ink']" :style="ink(row)">
               {{ row.xp }}
             </span>
           </div>

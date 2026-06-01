@@ -108,14 +108,13 @@ const ensureGsap = async () => {
 }
 const reduced = () => import.meta.client && window.matchMedia('(prefers-reduced-motion: reduce)').matches
 
-// Hover: lift the card, pop the coin with a springy ease, swell the glow.
+// Hover: lift the card and pop the coin with a springy ease.
 const onEnter = async (e: PointerEvent) => {
   if (reduced()) return
   const g = await ensureGsap()
   const card = e.currentTarget as HTMLElement
   g.to(card, { y: -8, duration: 0.35, ease: 'power3.out' })
   g.to(card.querySelector('.coin'), { scale: 1.14, rotate: -5, duration: 0.5, ease: 'back.out(3)' })
-  g.to(card.querySelector('.glow'), { scale: 1.3, duration: 0.5, ease: 'power2.out' })
 }
 const onLeave = async (e: PointerEvent) => {
   if (reduced()) return
@@ -123,7 +122,6 @@ const onLeave = async (e: PointerEvent) => {
   const card = e.currentTarget as HTMLElement
   g.to(card, { y: 0, duration: 0.45, ease: 'power3.out' })
   g.to(card.querySelector('.coin'), { scale: 1, rotate: 0, duration: 0.5, ease: 'power3.out' })
-  g.to(card.querySelector('.glow'), { scale: 1, duration: 0.5, ease: 'power2.out' })
 }
 
 // Detail panel open/close — animate height + stagger the inner lines.
@@ -175,36 +173,32 @@ onMounted(async () => {
   if (progressRef.value) {
     g.fromTo(progressRef.value, { width: '0%' }, {
       width: earnedPct.value + '%', duration: 1.1, ease: 'power3.out',
-      scrollTrigger: { trigger: '.ach-plate', start: 'top 80%' },
+      scrollTrigger: { trigger: '.ach-wrap', start: 'top 80%' },
     })
   }
   if (countRef.value) {
     const obj = { v: 0 }
     g.to(obj, {
       v: earnedCount.value, duration: 1.1, ease: 'power2.out',
-      scrollTrigger: { trigger: '.ach-plate', start: 'top 80%' },
+      scrollTrigger: { trigger: '.ach-wrap', start: 'top 80%' },
       onUpdate: () => { if (countRef.value) countRef.value.textContent = String(Math.round(obj.v)) },
     })
   }
 })
 
-useReveal('.ach-plate', { y: 46, scale: 0.97, duration: 0.9 })
 useReveal('.ach-grid .badge', { stagger: 0.07, y: 26, scale: 0.55, rotation: -6, duration: 0.7, ease: 'back.out(2)', trigger: '.ach-grid', delay: 0.2 })
 </script>
 
 <template>
-  <section id="achievements" class="py-[110px] relative">
-    <div class="max-w-[1320px] mx-auto px-8">
+  <section id="achievements" class="py-16 sm:py-[110px] relative">
+    <div class="max-w-[1320px] mx-auto px-4 sm:px-8">
       <SectionHeader tag="Награды и достижения" tag-color="var(--color-purple-brand)" sub="Бейджи выдаются автоматически за активность и серии. Нажми на любой — увидишь, что нужно сделать, чтобы его получить.">
         <template #title>
           Каждое<br />усилие — <span class="text-purple-brand">бейдж</span>
         </template>
       </SectionHeader>
 
-      <div class="ach-plate">
-        <span class="ach-plate-glow ach-plate-glow-a" />
-        <span class="ach-plate-glow ach-plate-glow-b" />
-
+      <div class="ach-wrap">
         <div class="ach-top">
           <span class="ach-top-label font-mono">Коллекция бейджей</span>
           <span class="ach-top-count font-mono">
@@ -226,7 +220,6 @@ useReveal('.ach-grid .badge', { stagger: 0.07, y: 26, scale: 0.55, rotation: -6,
             @pointerenter="onEnter"
             @pointerleave="onLeave"
           >
-            <span class="glow" />
             <span class="coin">
               <img v-if="pictureOf(b)" :src="pictureOf(b)!" :alt="b.label" class="coin-img" />
             </span>
@@ -278,29 +271,8 @@ useReveal('.ach-grid .badge', { stagger: 0.07, y: 26, scale: 0.55, rotation: -6,
 </template>
 
 <style scoped>
-/* ── plate ── */
-.ach-plate {
-  position: relative;
-  overflow: hidden;
-  background: var(--color-bg-2);
-  border: 1px solid var(--color-line);
-  border-radius: 24px;
-  padding: 30px;
-}
-.ach-plate-glow {
-  position: absolute;
-  width: 280px;
-  height: 280px;
-  border-radius: 50%;
-  filter: blur(70px);
-  pointer-events: none;
-  z-index: 0;
-}
-.ach-plate-glow-a { top: -120px; right: -80px; background: var(--color-cyan-brand); opacity: 0.16; animation: glowA 11s ease-in-out infinite; }
-.ach-plate-glow-b { bottom: -140px; left: -90px; background: var(--color-purple-brand); opacity: 0.14; animation: glowB 13s ease-in-out infinite; }
-@keyframes glowA { 0%,100% { transform: translate(0,0) scale(1); } 50% { transform: translate(-26px,24px) scale(1.12); } }
-@keyframes glowB { 0%,100% { transform: translate(0,0) scale(1); } 50% { transform: translate(28px,-20px) scale(1.12); } }
-.ach-plate > *:not(.ach-plate-glow) { position: relative; z-index: 1; }
+/* ── wrap ── */
+.ach-wrap { position: relative; margin-top: 8px; }
 
 /* ── header + progress ── */
 .ach-top {
@@ -330,44 +302,22 @@ useReveal('.ach-grid .badge', { stagger: 0.07, y: 26, scale: 0.55, rotation: -6,
 /* ── badge card ── */
 .badge {
   position: relative;
-  overflow: hidden;
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 12px;
   padding: 22px 12px 18px;
   border-radius: 18px;
-  background: var(--color-bg-3);
-  border: 1px solid var(--color-line);
+  background: transparent;
+  border: none;
   cursor: pointer;
   text-align: center;
-  transition: border-color 0.25s ease, background 0.25s ease, box-shadow 0.3s ease;
   will-change: transform;
 }
-.badge:hover { border-color: var(--color-line-strong); }
 .badge.is-locked { opacity: 0.62; }
-.badge.is-active {
-  border-color: var(--acc);
-  background: color-mix(in srgb, var(--acc) 8%, var(--color-bg-3));
-  box-shadow: 0 0 0 1px var(--acc), 0 22px 46px -20px var(--acc);
+.badge.is-active .coin {
+  box-shadow: none;
 }
-
-.glow {
-  position: absolute;
-  top: 2px;
-  left: 50%;
-  width: 96px;
-  height: 96px;
-  margin-left: -48px;
-  border-radius: 50%;
-  background: var(--acc);
-  filter: blur(30px);
-  opacity: 0.16;
-  pointer-events: none;
-  will-change: transform;
-}
-.badge.is-earned .glow { opacity: 0.42; }
-.badge.is-active .glow { opacity: 0.5; }
 
 .coin {
   position: relative;
@@ -375,16 +325,16 @@ useReveal('.ach-grid .badge', { stagger: 0.07, y: 26, scale: 0.55, rotation: -6,
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 60px;
-  height: 60px;
-  border-radius: 17px;
-  background: linear-gradient(155deg, color-mix(in srgb, var(--acc) 24%, transparent), color-mix(in srgb, var(--acc) 4%, transparent));
-  border: 1px solid color-mix(in srgb, var(--acc) 38%, var(--color-line));
+  width: 84px;
+  height: 84px;
+  border-radius: 22px;
+  background: transparent;
+  border: 1px solid color-mix(in srgb, var(--acc) 55%, transparent);
   will-change: transform;
   overflow: hidden;
 }
-.coin-lg { width: 72px; height: 72px; border-radius: 20px; }
-.coin-img { width: 70%; height: 70%; object-fit: contain; filter: drop-shadow(0 6px 10px rgba(0, 0, 0, 0.25)); }
+.coin-lg { width: 96px; height: 96px; border-radius: 24px; }
+.coin-img { width: 100%; height: 100%; object-fit: contain; filter: none; }
 .badge:not(.is-earned) .coin-img { filter: grayscale(1); opacity: 0.6; }
 
 /* earned sheen sweeping across the coin */
@@ -425,22 +375,22 @@ useReveal('.ach-grid .badge', { stagger: 0.07, y: 26, scale: 0.55, rotation: -6,
 .chip-got {
   color: var(--color-btn-ink);
   background: var(--acc);
-  box-shadow: 0 4px 10px -2px var(--acc);
+  box-shadow: none;
 }
 .chip-lock { opacity: 0.7; }
 
 /* ── detail panel ── */
-.ach-detail { overflow: hidden; height: 0; }
+.ach-detail { overflow: hidden; height: 0; width: 100%; grid-column: 1 / -1; }
 .ach-detail-inner {
   display: grid;
-  grid-template-columns: auto 1fr auto;
+  grid-template-columns: auto minmax(0, 1fr) auto;
   gap: 20px;
   align-items: center;
-  margin-top: 22px;
-  padding: 20px 22px;
-  border-radius: 18px;
-  border: 1px solid color-mix(in srgb, var(--acc) 30%, var(--color-line));
-  background: linear-gradient(120deg, color-mix(in srgb, var(--acc) 12%, transparent), transparent 70%), var(--color-bg-3);
+  width: 100%;
+  margin-top: 14px;
+  padding: 10px 4px 18px;
+  border: none;
+  background: transparent;
 }
 .d-text { min-width: 0; }
 .d-kicker {
@@ -462,11 +412,11 @@ useReveal('.ach-grid .badge', { stagger: 0.07, y: 26, scale: 0.55, rotation: -6,
   height: 46px;
   flex-shrink: 0;
   object-fit: contain;
-  padding: 7px;
-  border-radius: 12px;
-  background: color-mix(in srgb, var(--acc) 12%, var(--color-bg-2));
-  border: 1px solid color-mix(in srgb, var(--acc) 35%, var(--color-line));
-  filter: drop-shadow(0 6px 10px rgba(0, 0, 0, 0.25));
+  padding: 0;
+  border-radius: 14px;
+  background: transparent;
+  border: 1px solid color-mix(in srgb, var(--acc) 55%, transparent);
+  filter: none;
 }
 .d-reward-body { min-width: 0; }
 .d-reward-text {
@@ -474,7 +424,7 @@ useReveal('.ach-grid .badge', { stagger: 0.07, y: 26, scale: 0.55, rotation: -6,
   letter-spacing: 0.04em;
   color: var(--color-ink-2);
 }
-.d-reward-text b { color: var(--acc, var(--color-cyan-brand)); }
+.d-reward-text b { color: inherit; }
 .d-reward-note {
   margin-top: 2px;
   font-size: 10px;

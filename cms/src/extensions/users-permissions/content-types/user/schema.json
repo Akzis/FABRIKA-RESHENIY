@@ -89,6 +89,7 @@
       "default": "member"
     },
     "xp": { "type": "integer", "default": 0, "min": 0 },
+    "spentXp": { "type": "integer", "default": 0, "min": 0 },
     "level": { "type": "integer", "default": 1, "min": 1 },
     "xpToNextLevel": { "type": "integer", "default": 250, "min": 1 },
     "streak": { "type": "integer", "default": 0, "min": 0 },

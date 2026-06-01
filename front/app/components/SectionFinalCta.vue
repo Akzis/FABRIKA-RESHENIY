@@ -3,9 +3,9 @@ useReveal('.cta-reveal', { y: 40, scale: 0.92, blur: 6, stagger: 0.12, duration:
 </script>
 
 <template>
-  <section class="py-[110px]">
-    <div class="max-w-[1320px] mx-auto px-8">
-      <div class="relative overflow-hidden border border-line rounded-[26px] py-[70px] px-15 text-center"
+  <section class="py-16 sm:py-[110px]">
+    <div class="max-w-[1320px] mx-auto px-4 sm:px-8">
+      <div class="relative overflow-hidden border border-line rounded-[26px] py-12 px-6 sm:py-[70px] sm:px-15 text-center"
         style="background:
           radial-gradient(circle at 20% 30%, rgba(24,239,242,0.18), transparent 40%),
           radial-gradient(circle at 85% 70%, rgba(181,89,243,0.18), transparent 40%),

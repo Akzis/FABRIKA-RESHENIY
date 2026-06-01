@@ -61,8 +61,8 @@ const fmtDate = (iso?: string | null) => {
 </script>
 
 <template>
-  <section id="review" class="py-[90px] relative scroll-mt-24">
-    <div class="max-w-[1100px] mx-auto px-8">
+  <section id="review" class="py-16 sm:py-[90px] relative scroll-mt-24">
+    <div class="max-w-[1100px] mx-auto px-4 sm:px-8">
       <SectionHeader tag="Проверка" tag-color="var(--color-cyan-brand)" sub="Участники сдают челленджи на проверку. Посмотри решение и вложения, затем зачисли выполнение, поставь частичный зачёт или отклони с комментарием.">
         <template #title>
           Проверка <span class="text-cyan-brand">сдач</span>

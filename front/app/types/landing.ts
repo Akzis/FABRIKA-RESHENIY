@@ -52,11 +52,17 @@ export interface Badge {
   rewardImage?: string | null
 }
 
+export type DailyQuestKind = 'action' | 'quiz'
+
 export interface DailyQuest {
   id?: number
   title: string
   description?: string
   points: number
+  /** 'action' = press to confirm; 'quiz' = pick the right option. */
+  kind?: DailyQuestKind
+  /** Multiple-choice options (quiz only). The answer key stays server-side. */
+  options?: string[]
 }
 
 export type ChallengeTaskLevel = 'light' | 'medium' | 'hard'
@@ -92,6 +98,21 @@ export interface ChallengeSubmission {
   attachments: SubmissionAttachment[]
 }
 
+export type ShopOrderStatus = 'pending' | 'delivered'
+
+/** A shop purchase = an expected delivery the PM fulfils for a participant. */
+export interface ShopOrder {
+  id: number
+  status: ShopOrderStatus
+  itemTitle: string
+  itemImage?: string
+  itemTag?: string
+  price: number
+  createdAt?: string
+  deliveredAt?: string | null
+  participant?: { id: number; name: string } | null
+}
+
 export interface LeaderboardRow {
   rank: number
   userId?: number
@@ -118,6 +139,23 @@ export interface LeaderboardRow {
   headerImageX?: number | null
   headerImageY?: number | null
   headerImageSize?: number | null
+}
+
+/** Aggregated team standing — built from the team's members. */
+export interface TeamLeaderboardRow {
+  rank: number
+  name: string
+  /** Number of members counted into the team totals. */
+  members: number
+  /** Sum of members' XP. */
+  xpValue: number
+  /** Sum of members' closed challenges. */
+  closedValue: number
+  /** Formatted XP, e.g. "1 635". */
+  xp: string
+  initial: string
+  gradient: string
+  me?: boolean
 }
 
 export interface RoleCard {

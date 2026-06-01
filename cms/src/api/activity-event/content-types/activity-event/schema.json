@@ -1,0 +1,31 @@
+{
+  "kind": "collectionType",
+  "collectionName": "activity_events",
+  "info": {
+    "singularName": "activity-event",
+    "pluralName": "activity-events",
+    "displayName": "Activity Event",
+    "description": "Запись о выполнении задания участником в конкретный день — источник для тепловой карты активности (heatmap)"
+  },
+  "options": { "draftAndPublish": false },
+  "attributes": {
+    "user": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "plugin::users-permissions.user"
+    },
+    "team": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "api::team.team"
+    },
+    "kind": {
+      "type": "enumeration",
+      "enum": ["challenge", "daily"],
+      "required": true
+    },
+    "day": { "type": "date", "required": true },
+    "xp": { "type": "integer", "default": 0, "min": 0 },
+    "sourceId": { "type": "integer" }
+  }
+}

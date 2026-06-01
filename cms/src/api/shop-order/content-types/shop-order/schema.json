@@ -1,0 +1,39 @@
+{
+  "kind": "collectionType",
+  "collectionName": "shop_orders",
+  "info": {
+    "singularName": "shop-order",
+    "pluralName": "shop-orders",
+    "displayName": "Shop Order",
+    "description": "Покупка товара участником за XP — ожидаемая доставка, которую выдаёт проектный менеджер"
+  },
+  "options": { "draftAndPublish": false },
+  "attributes": {
+    "participant": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "plugin::users-permissions.user"
+    },
+    "team": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "api::team.team"
+    },
+    "shopItem": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "api::shop-item.shop-item"
+    },
+    "itemTitle": { "type": "string", "required": true },
+    "itemImage": { "type": "string" },
+    "itemTag": { "type": "string" },
+    "price": { "type": "integer", "default": 0, "min": 0 },
+    "status": {
+      "type": "enumeration",
+      "enum": ["pending", "delivered"],
+      "default": "pending",
+      "required": true
+    },
+    "deliveredAt": { "type": "datetime" }
+  }
+}

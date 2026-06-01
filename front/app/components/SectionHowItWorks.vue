@@ -4,8 +4,8 @@ useReveal('.how-step', { stagger: 0.12, y: 60, scale: 0.92, blur: 6, duration: 1
 </script>
 
 <template>
-  <section id="how" class="py-[110px] relative">
-    <div class="max-w-[1320px] mx-auto px-8">
+  <section id="how" class="py-16 sm:py-[110px] relative">
+    <div class="max-w-[1320px] mx-auto px-4 sm:px-8">
       <SectionHeader tag="Механика" sub="Каждый день платформа подбирает челленджи под уровень команды. Чем сложнее задача — тем больше баллов и шанс получить эксклюзивную награду в магазине.">
         <template #title>
           4 шага<br />от задачи<br />до <span class="text-cyan-brand">награды</span>

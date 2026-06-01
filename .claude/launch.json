@@ -6,6 +6,12 @@
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "--prefix", "front", "dev"],
       "port": 4000
+    },
+    {
+      "name": "cms",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "--prefix", "cms", "develop"],
+      "port": 1337
     }
   ]
 }

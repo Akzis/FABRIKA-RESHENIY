@@ -2,13 +2,16 @@
 import {
   seedBadges,
   seedChallenges,
-  seedDaily,
   seedHero,
   seedHowSteps,
   seedLevels,
   seedRoles,
   seedShopItems,
+  dailyQuestsForDate,
 } from './seed-data'
+
+// How many days ahead the daily quests are pre-populated, today included.
+const DAILY_DAYS_AHEAD = 5
 
 // Content types that the landing reads from. On every boot we make sure
 // the public role can `find` / `findOne` them so the unauthenticated SSR
@@ -68,10 +71,14 @@ async function grantAuthenticatedSelf(strapi: any) {
     'plugin::users-permissions.user.listSubmissions',
     'plugin::users-permissions.user.reviewSubmission',
     'plugin::users-permissions.user.getTeam',
+    'plugin::users-permissions.user.getTeamActivity',
     'plugin::users-permissions.user.renameTeam',
     'plugin::users-permissions.user.removeMember',
     'plugin::users-permissions.user.createInvite',
     'plugin::users-permissions.user.joinTeam',
+      'plugin::users-permissions.user.purchaseShopItem',
+      'plugin::users-permissions.user.listShopOrders',
+      'plugin::users-permissions.user.deliverShopOrder',
     'api::daily-quest.daily-quest.find',
     'api::daily-quest.daily-quest.findOne',
     // teams count for the hero stats (total number of teams)
@@ -150,6 +157,111 @@ async function backfillBadgeRewards(strapi: any) {
   }
 }
 
+// Seed the activity heatmap with historic challenge completions. Daily quests
+// have no per-day history (only a relation + last date), so they can't be
+// reconstructed — they start accumulating from the moment logging was added.
+// Challenges, however, leave a dated trail in challenge-submissions, so every
+// approved/partial submission gets a matching activity-event here. Idempotent:
+// `sourceId` (the submission id) is matched so a row is only ever created once,
+// and so the live logging in reviewSubmission never duplicates a backfilled row.
+async function backfillChallengeActivity(strapi: any) {
+  const subUid = 'api::challenge-submission.challenge-submission'
+  const evUid = 'api::activity-event.activity-event'
+  if (!hasType(strapi, subUid) || !hasType(strapi, evUid)) return
+
+  const es: any = strapi.entityService
+  const dayStr = (d: any) => new Date(d).toISOString().slice(0, 10)
+
+  const subs: any[] = await es.findMany(subUid, {
+    filters: { status: { $in: ['approved', 'partial'] } },
+    fields: ['id', 'awardedXp', 'reviewedAt', 'createdAt'],
+    populate: { participant: { fields: ['id'] }, team: { fields: ['id'] } },
+    limit: 100000,
+  })
+
+  let created = 0
+  for (const s of subs ?? []) {
+    const pid = s.participant?.id
+    if (!pid) continue
+    const existing = await es.findMany(evUid, {
+      filters: { kind: 'challenge', sourceId: s.id },
+      fields: ['id'],
+      limit: 1,
+    })
+    if (existing?.length) continue
+    await es.create(evUid, {
+      data: {
+        user: pid,
+        team: s.team?.id ?? null,
+        kind: 'challenge',
+        day: dayStr(s.reviewedAt || s.createdAt),
+        xp: Number(s.awardedXp) || 0,
+        sourceId: s.id,
+      },
+    })
+    created++
+  }
+  if (created > 0) {
+    strapi.log.info(`[bootstrap] backfilled ${created} challenge activity event(s)`)
+  }
+}
+
+// Materialise the rotating daily quests for today and the next few days, so a
+// new calendar day always has a fresh set waiting. Safe to run on every boot
+// and from a daily cron.
+//
+// Reconciling, not just filling: for each day it compares the existing rows'
+// titles against what dailyQuestsForDate() wants. If they already match it does
+// nothing (idempotent); if they differ — e.g. the quest pool was edited — it
+// deletes that day's rows and recreates them from the current pool. That's what
+// lets a pool change (like swapping challenge-based tasks for quizzes) roll out
+// to today/upcoming days instead of being stuck behind already-seeded rows.
+// Past days are left untouched, preserving history.
+async function ensureDailyQuestsAhead(strapi: any, daysAhead = DAILY_DAYS_AHEAD) {
+  const uid = 'api::daily-quest.daily-quest'
+  if (!hasType(strapi, uid)) {
+    strapi.log.warn(`[bootstrap] skip daily quests: ${uid} not found`)
+    return
+  }
+
+  const dayStr = (d: Date) => d.toISOString().slice(0, 10)
+  const sameSet = (a: string[], b: string[]) =>
+    a.length === b.length && [...a].sort().join(' ') === [...b].sort().join(' ')
+
+  let created = 0
+  let refreshed = 0
+  for (let i = 0; i < daysAhead; i++) {
+    const date = new Date(Date.now() + i * 86_400_000)
+    const iso = dayStr(date)
+    const want = dailyQuestsForDate(date)
+
+    const existing: any[] = await strapi.documents(uid).findMany({
+      filters: { date: { $eq: iso } },
+      fields: ['documentId', 'title'],
+      limit: 100,
+    })
+
+    // Already the desired set? leave it (keeps ids/completions stable).
+    if (existing.length && sameSet(existing.map((r) => r.title), want.map((w) => w.title))) continue
+
+    // Stale or partial — wipe this day and rebuild from the current pool.
+    for (const row of existing) {
+      try { await strapi.documents(uid).delete({ documentId: row.documentId }) } catch { /* ignore */ }
+    }
+    if (existing.length) refreshed++
+
+    for (const quest of want) {
+      const doc = await strapi.documents(uid).create({ data: { ...quest, date: iso } })
+      await publishCreated(strapi, uid, doc)
+      created++
+    }
+  }
+  if (created > 0) {
+    strapi.log.info(`[bootstrap] daily quests: created ${created} row(s) across up to ${daysAhead} day(s)` +
+      (refreshed ? `, refreshed ${refreshed} stale day(s)` : ''))
+  }
+}
+
 export default {
   /**
    * An asynchronous register function that runs before
@@ -180,7 +292,8 @@ export default {
       () => seedIfEmpty(strapi, 'api::how-step.how-step', seedHowSteps),
       () => seedIfEmpty(strapi, 'api::challenge-level.challenge-level', seedLevels),
       () => seedIfEmpty(strapi, 'api::badge.badge', seedBadges),
-      () => seedIfEmpty(strapi, 'api::daily-quest.daily-quest', seedDaily),
+      // Daily quests rotate per day — filled by ensureDailyQuestsAhead below
+      // instead of a one-shot seed.
       () => seedIfEmpty(strapi, 'api::challenge.challenge', seedChallenges),
       () => seedIfEmpty(strapi, 'api::shop-item.shop-item', seedShopItems),
       () => seedIfEmpty(strapi, 'api::role-card.role-card', seedRoles),
@@ -197,6 +310,33 @@ export default {
 
     try { await backfillBadgeRewards(strapi) } catch (e: any) {
       strapi.log.warn(`[bootstrap] badge reward backfill failed: ${e?.message ?? e}`)
+    }
+
+    // Backfill the activity heatmap with historic challenge completions.
+    try { await backfillChallengeActivity(strapi) } catch (e: any) {
+      strapi.log.warn(`[bootstrap] challenge activity backfill failed: ${e?.message ?? e}`)
+    }
+
+    // Pre-fill the rotating daily quests for today + the next few days.
+    try { await ensureDailyQuestsAhead(strapi) } catch (e: any) {
+      strapi.log.warn(`[bootstrap] daily quest fill failed: ${e?.message ?? e}`)
+    }
+
+    // Keep filling ahead while the server stays up: every day past midnight UTC
+    // the new day's set is materialised (and the window slides one day forward).
+    try {
+      strapi.cron.add({
+        dailyQuestRotation: {
+          task: async ({ strapi }: { strapi: any }) => {
+            try { await ensureDailyQuestsAhead(strapi) } catch (e: any) {
+              strapi.log.warn(`[cron] daily quest fill failed: ${e?.message ?? e}`)
+            }
+          },
+          options: { rule: '5 0 * * *', tz: 'UTC' },
+        },
+      })
+    } catch (e: any) {
+      strapi.log.warn(`[bootstrap] could not register daily quest cron: ${e?.message ?? e}`)
     }
   },
 }

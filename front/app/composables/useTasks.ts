@@ -33,27 +33,33 @@ export function useTasks() {
     return s
   })
 
-  const complete = async (kind: Kind, id?: number): Promise<boolean> => {
-    if (!token.value || !id) return false
+  // Result of a completion attempt. `wrongAnswer` is set when a quiz daily was
+  // answered incorrectly — nothing is awarded and the task stays open.
+  type CompleteResult = { ok: boolean; wrongAnswer?: boolean }
+
+  const complete = async (kind: Kind, id?: number, answer?: number): Promise<CompleteResult> => {
+    if (!token.value || !id) return { ok: false }
     // already done? don't fire again
     const local = kind === 'challenge' ? localChallenges : localDaily
-    if (local.value.has(id)) return false
+    if (local.value.has(id)) return { ok: false }
     try {
-      const res = await $fetch<{ awardedBadges?: AwardedBadge[] }>(
+      const res = await $fetch<{ ok?: boolean; wrongAnswer?: boolean; awardedBadges?: AwardedBadge[] }>(
         `${strapiBase}/api/users/me/tasks/complete`,
         {
           method: 'POST',
-          body: { kind, id },
+          body: { kind, id, ...(answer != null ? { answer } : {}) },
           headers: { Authorization: `Bearer ${token.value}` },
         },
       )
+      // Quiz answered wrong: server credits nothing and tells us so.
+      if (res?.wrongAnswer) return { ok: false, wrongAnswer: true }
       lastAwardedBadges.value = res?.awardedBadges ?? []
       // lock it immediately (reactive Set replace), then refresh xp/server state
       local.value = new Set(local.value).add(id)
       await fetchUser()
-      return true
+      return { ok: true }
     } catch {
-      return false
+      return { ok: false }
     }
   }
 
@@ -61,7 +67,7 @@ export function useTasks() {
     completedChallengeIds,
     completedDailyIds,
     lastAwardedBadges,
-    completeChallenge: (id?: number) => complete('challenge', id),
-    completeDaily: (id?: number) => complete('daily', id),
+    completeChallenge: async (id?: number) => (await complete('challenge', id)).ok,
+    completeDaily: (id?: number, answer?: number) => complete('daily', id, answer),
   }
 }

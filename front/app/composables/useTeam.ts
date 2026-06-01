@@ -14,7 +14,25 @@ export interface TeamMember {
   challengesClosed: number
   streak: number
   badgesCount: number
+  completedDailyCount: number
   avatarUrl: string | null
+}
+
+/** Per-day completion counts for the activity heatmap. */
+export interface ActivityDay { challenges: number; dailies: number }
+export interface MemberActivity {
+  id: number
+  name: string
+  username: string
+  avatarUrl: string | null
+  totalChallenges: number
+  totalDailies: number
+  days: Record<string, ActivityDay>
+}
+export interface TeamActivity {
+  from: string | null
+  to: string | null
+  members: MemberActivity[]
 }
 
 export function useTeam() {
@@ -25,6 +43,9 @@ export function useTeam() {
   const team = useState<{ id: number; name: string } | null>('fr-team', () => null)
   const members = useState<TeamMember[]>('fr-team-members', () => [])
   const loading = ref(false)
+
+  const activity = useState<TeamActivity | null>('fr-team-activity', () => null)
+  const activityLoading = ref(false)
 
   const authHeaders = () =>
     token.value ? { Authorization: `Bearer ${token.value}` } : {}
@@ -43,6 +64,23 @@ export function useTeam() {
       /* keep whatever we had */
     } finally {
       loading.value = false
+    }
+  }
+
+  /** Fetch per-member, per-day completion counts for the activity heatmap. */
+  const fetchActivity = async (): Promise<void> => {
+    if (!token.value) return
+    activityLoading.value = true
+    try {
+      const res = await $fetch<TeamActivity>(
+        `${strapiBase}/api/users/me/team/activity`,
+        { headers: authHeaders() },
+      )
+      activity.value = res ?? null
+    } catch {
+      /* keep whatever we had */
+    } finally {
+      activityLoading.value = false
     }
   }
 
@@ -79,5 +117,5 @@ export function useTeam() {
     }
   }
 
-  return { team, members, loading, fetch, rename, removeMember }
+  return { team, members, loading, fetch, rename, removeMember, activity, activityLoading, fetchActivity }
 }

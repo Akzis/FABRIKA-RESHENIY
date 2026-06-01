@@ -75,6 +75,36 @@ export default (plugin: any) => {
     return { streak, today };
   };
 
+  // ── Activity log ───────────────────────────────────────────────────────
+  // One row per completed task on a given calendar day — the source for the
+  // team activity heatmap. Daily completions are logged from completeTask;
+  // challenge completions from reviewSubmission (and backfilled from existing
+  // submissions at boot). `sourceId` (the submission id for challenges) keeps
+  // the boot backfill idempotent.
+  const logActivity = async (args: {
+    userId: number;
+    teamId: number | null;
+    kind: 'challenge' | 'daily';
+    day: string; // YYYY-MM-DD
+    xp?: number;
+    sourceId?: number | null;
+  }) => {
+    try {
+      await es.create('api::activity-event.activity-event', {
+        data: {
+          user: args.userId,
+          team: args.teamId ?? null,
+          kind: args.kind,
+          day: args.day,
+          xp: Math.max(0, Number(args.xp) || 0),
+          sourceId: args.sourceId ?? null,
+        },
+      });
+    } catch (e: any) {
+      strapi.log.warn(`[activity] could not log ${args.kind} event: ${e?.message ?? e}`);
+    }
+  };
+
   // ── Badge awarding ─────────────────────────────────────────────────────
   // Re-evaluates every badge that has an automatic condition and grants the
   // ones the user now qualifies for. Idempotent: already-earned badges are
@@ -172,7 +202,7 @@ export default (plugin: any) => {
           'id', 'username', 'email', 'confirmed', 'blocked',
           'displayName', 'teamRole', 'profileActivated',
           'profileHeader',
-          'xp', 'level', 'xpToNextLevel',
+          'xp', 'spentXp', 'level', 'xpToNextLevel',
           'streak', 'challengesClosed', 'badgesCount',
           'teamCupPlace', 'teamCupCurrent', 'teamCupTotal',
           'createdAt', 'updatedAt',
@@ -350,12 +380,26 @@ export default (plugin: any) => {
     const relation = isChallenge ? 'completedChallenges' : 'completedDailyQuests';
     const rewardField = isChallenge ? 'xp' : 'points';
 
-    const task: any = await es.findOne(uid, taskId, { fields: ['id', rewardField] });
+    // Daily quests carry their type + answer key; challenges don't.
+    const taskFields = isChallenge
+      ? ['id', rewardField]
+      : ['id', rewardField, 'kind', 'correctAnswer'];
+    const task: any = await es.findOne(uid, taskId, { fields: taskFields });
     if (!task) return ctx.badRequest('task not found');
+
+    // Quiz dailies are only credited for the correct option. The answer is the
+    // 0-based index the client picked; we check it here so the answer key never
+    // has to leave the server (the public API strips `correctAnswer`).
+    if (!isChallenge && task.kind === 'quiz') {
+      const answer = Number(ctx.request.body?.answer);
+      if (!Number.isInteger(answer) || answer !== Number(task.correctAnswer)) {
+        return (ctx.body = { ok: false, wrongAnswer: true });
+      }
+    }
 
     const me: any = await es.findOne('plugin::users-permissions.user', userId, {
       fields: ['xp', 'challengesClosed', 'streak', 'lastDailyDate'],
-      populate: { [relation]: { fields: ['id'] } },
+      populate: { [relation]: { fields: ['id'] }, team: { fields: ['id'] } },
     });
 
     // Existing completed ids for this relation. We rewrite the whole array
@@ -389,6 +433,17 @@ export default (plugin: any) => {
 
     await es.update('plugin::users-permissions.user', userId, { data });
 
+    // Record the completion for the activity heatmap. Challenges normally flow
+    // through the submit → review path (logged in reviewSubmission); a direct
+    // challenge completion here is logged too so the heatmap stays complete.
+    await logActivity({
+      userId,
+      teamId: me?.team?.id ?? null,
+      kind: isChallenge ? 'challenge' : 'daily',
+      day: dayStr(new Date()),
+      xp: reward,
+    });
+
     // Re-check badge conditions against the user's new stats.
     const awardedBadges = await awardBadges(userId);
 
@@ -398,7 +453,8 @@ export default (plugin: any) => {
   // ── /api/users/me/challenges/submit — participant sends a challenge for review ─
   // Multipart: { challengeId, comment, files[] }. Creates a `pending` submission
   // bound to the participant + their team. Blocks duplicates while one is still
-  // pending/approved/partial (a rejected one may be resubmitted).
+  // pending or fully approved. A rejected *or partially credited* one may be
+  // resubmitted — review then tops up the XP to the new grade (see reviewSubmission).
   plugin.controllers.user.submitChallenge = async (ctx: any) => {
     const userId = ctx.state.user?.id;
     if (!userId) return ctx.unauthorized('not logged in');
@@ -427,7 +483,7 @@ export default (plugin: any) => {
         filters: {
           participant: userId,
           challenge: challengeId,
-          status: { $in: ['pending', 'approved', 'partial'] },
+          status: { $in: ['pending', 'approved'] },
         },
         fields: ['id'],
         limit: 1,
@@ -526,7 +582,9 @@ export default (plugin: any) => {
   // ── /api/users/me/submissions/:id/review — PM grades a submission ──────
   // Body: { decision: 'approved'|'rejected'|'partial', awardedXp?, reviewNote? }.
   // approved/partial credit the participant (XP + completedChallenges); rejected
-  // awards nothing and lets them resubmit. Only the owning team's PM may review.
+  // awards nothing and lets them resubmit. XP is credited as a delta over what
+  // earlier submissions of the same challenge already paid, so a partial→resubmit
+  // →full pass tops up to the new grade. Only the owning team's PM may review.
   plugin.controllers.user.reviewSubmission = async (ctx: any) => {
     const userId = ctx.state.user?.id;
     if (!userId) return ctx.unauthorized('not logged in');
@@ -595,7 +653,27 @@ export default (plugin: any) => {
         .map((c: any) => c.id)
         .filter((x: any) => x != null);
 
-      const newXp = (Number(participant?.xp) || 0) + reward;
+      // A partially-credited challenge may have already paid out on an earlier
+      // submission. Only top up by the delta so a resubmit→full-pass lands the
+      // participant on the new grade's total, not the sum of both reviews.
+      let priorAwarded = 0;
+      if (challengeId) {
+        const prior: any[] = await es.findMany(
+          'api::challenge-submission.challenge-submission',
+          {
+            filters: {
+              participant: pid,
+              challenge: challengeId,
+              status: { $in: ['approved', 'partial'] },
+              id: { $ne: subId },
+            },
+            fields: ['awardedXp'],
+          },
+        );
+        priorAwarded = (prior ?? []).reduce((sum, r) => sum + (Number(r.awardedXp) || 0), 0);
+      }
+
+      const newXp = Math.max(0, (Number(participant?.xp) || 0) + reward - priorAwarded);
       const { level, xpToNextLevel } = levelFromXp(newXp);
       const data: Record<string, unknown> = { xp: newXp, level, xpToNextLevel };
       if (challengeId && !doneIds.includes(challengeId)) {
@@ -604,11 +682,182 @@ export default (plugin: any) => {
       }
       await es.update('plugin::users-permissions.user', pid, { data });
 
+      // Log the challenge completion on the review day for the activity heatmap.
+      // sourceId = submission id keeps the boot backfill from duplicating it.
+      await logActivity({
+        userId: pid,
+        teamId: sub.team?.id ?? null,
+        kind: 'challenge',
+        day: dayStr(new Date()),
+        xp: reward,
+        sourceId: subId,
+      });
+
       // Approving a challenge may unlock badges for the participant.
       await awardBadges(pid);
     }
 
     ctx.body = { ok: true, status: decision, awardedXp: reward };
+  };
+
+  // ── /api/users/me/shop/purchase — participant spends XP on a shop item ─
+  // Body: { shopItemId } (numeric id or slug). Spending is tracked via the
+  // user's `spentXp` counter, so the balance (xp − spentXp) drops while the
+  // earned XP — and therefore level/badges — stays intact. There is no
+  // once-per-item limit: a participant may buy any item as long as the balance
+  // covers its price. Each purchase creates a `pending` shop-order (delivery)
+  // bound to the participant + their team, which their PM fulfils later.
+  plugin.controllers.user.purchaseShopItem = async (ctx: any) => {
+    const userId = ctx.state.user?.id;
+    if (!userId) return ctx.unauthorized('not logged in');
+
+    const body = ctx.request.body ?? {};
+    const rawId = body.shopItemId ?? body.id ?? body.slug;
+    if (rawId == null || rawId === '') return ctx.badRequest('shopItemId is required');
+
+    // Accept either the numeric id or the slug the front sends.
+    const numericId = Number(rawId);
+    const itemFilters = Number.isInteger(numericId) && numericId > 0
+      ? { id: numericId }
+      : { slug: String(rawId) };
+    const items: any[] = await es.findMany('api::shop-item.shop-item', {
+      filters: itemFilters,
+      fields: ['id', 'slug', 'title', 'image', 'tag', 'price', 'isActive'],
+      limit: 1,
+    });
+    const item = items?.[0];
+    if (!item) return ctx.badRequest('товар не найден');
+    if (item.isActive === false) return ctx.badRequest('товар недоступен');
+
+    const me: any = await es.findOne('plugin::users-permissions.user', userId, {
+      fields: ['xp', 'spentXp'],
+      populate: { team: { fields: ['id'] } },
+    });
+    const teamId = me?.team?.id ?? null;
+    if (!teamId) return ctx.badRequest('сначала вступите в команду');
+
+    const price = Math.max(0, Number(item.price) || 0);
+    const xp = Number(me?.xp) || 0;
+    const spentXp = Number(me?.spentXp) || 0;
+    const balance = Math.max(0, xp - spentXp);
+    if (balance < price) {
+      return ctx.badRequest(`не хватает ${price - balance} XP`);
+    }
+
+    const newSpent = spentXp + price;
+    await es.update('plugin::users-permissions.user', userId, {
+      data: { spentXp: newSpent },
+    });
+
+    const order: any = await es.create('api::shop-order.shop-order', {
+      data: {
+        participant: userId,
+        team: teamId,
+        shopItem: item.id,
+        itemTitle: item.title,
+        itemImage: item.image ?? '',
+        itemTag: item.tag ?? '',
+        price,
+        status: 'pending',
+      },
+    });
+
+    ctx.body = {
+      ok: true,
+      xp,
+      spentXp: newSpent,
+      balance: Math.max(0, xp - newSpent),
+      order: {
+        id: order.id,
+        itemTitle: item.title,
+        itemImage: item.image ?? '',
+        itemTag: item.tag ?? '',
+        price,
+        status: 'pending',
+        createdAt: order.createdAt,
+      },
+    };
+  };
+
+  // ── /api/users/me/shop/orders — list shop orders (deliveries) ──────────
+  // PM → every order for their managed team (grouped client-side by member).
+  // Participant → only their own orders.
+  plugin.controllers.user.listShopOrders = async (ctx: any) => {
+    const userId = ctx.state.user?.id;
+    if (!userId) return ctx.unauthorized('not logged in');
+
+    const me: any = await es.findOne('plugin::users-permissions.user', userId, {
+      fields: ['teamRole'],
+      populate: { managedTeam: { fields: ['id'] } },
+    });
+
+    let filters: any;
+    if (me?.teamRole === 'pm') {
+      const teamId = me?.managedTeam?.id;
+      if (!teamId) return (ctx.body = { data: [] });
+      filters = { team: teamId };
+    } else {
+      filters = { participant: userId };
+    }
+
+    const rows: any[] = await es.findMany('api::shop-order.shop-order', {
+      filters,
+      populate: { participant: { fields: ['id', 'username', 'displayName'] } },
+      sort: { createdAt: 'desc' },
+      limit: 500,
+    });
+
+    const data = (rows ?? []).map((r) => ({
+      id: r.id,
+      status: r.status,
+      itemTitle: r.itemTitle ?? '',
+      itemImage: r.itemImage ?? '',
+      itemTag: r.itemTag ?? '',
+      price: r.price ?? 0,
+      createdAt: r.createdAt,
+      deliveredAt: r.deliveredAt ?? null,
+      participant: r.participant
+        ? { id: r.participant.id, name: r.participant.displayName || r.participant.username }
+        : null,
+    }));
+
+    ctx.body = { data };
+  };
+
+  // ── /api/users/me/shop/orders/:id/deliver — PM marks a delivery received ─
+  // Only the owning team's PM may fulfil; a delivered order can't be re-delivered.
+  plugin.controllers.user.deliverShopOrder = async (ctx: any) => {
+    const userId = ctx.state.user?.id;
+    if (!userId) return ctx.unauthorized('not logged in');
+
+    const orderId = Number(ctx.params?.id);
+    if (!orderId) return ctx.badRequest('order id is required');
+
+    const me: any = await es.findOne('plugin::users-permissions.user', userId, {
+      fields: ['teamRole'],
+      populate: { managedTeam: { fields: ['id'] } },
+    });
+    if (me?.teamRole !== 'pm') {
+      return ctx.forbidden('only a project manager can fulfil deliveries');
+    }
+
+    const order: any = await es.findOne('api::shop-order.shop-order', orderId, {
+      fields: ['id', 'status'],
+      populate: { team: { fields: ['id'] } },
+    });
+    if (!order) return ctx.notFound('order not found');
+    if (order.team?.id !== me?.managedTeam?.id) {
+      return ctx.forbidden('эта доставка не из вашей команды');
+    }
+    if (order.status === 'delivered') {
+      return ctx.badRequest('эта доставка уже выдана');
+    }
+
+    await es.update('api::shop-order.shop-order', orderId, {
+      data: { status: 'delivered', deliveredAt: new Date() },
+    });
+
+    ctx.body = { ok: true, status: 'delivered' };
   };
 
   // ── /api/users/me/team — PM sees their whole team + per-member stats ───
@@ -633,7 +882,10 @@ export default (plugin: any) => {
         'id', 'username', 'displayName',
         'xp', 'level', 'challengesClosed', 'streak', 'badgesCount',
       ],
-      populate: { avatar: { fields: ['url'] } },
+      populate: {
+        avatar: { fields: ['url'] },
+        completedDailyQuests: { fields: ['id'] },
+      },
       sort: { xp: 'desc' },
       limit: 500,
     });
@@ -649,9 +901,73 @@ export default (plugin: any) => {
         challengesClosed: m.challengesClosed ?? 0,
         streak: m.streak ?? 0,
         badgesCount: m.badgesCount ?? 0,
+        completedDailyCount: Array.isArray(m.completedDailyQuests) ? m.completedDailyQuests.length : 0,
         avatarUrl: m.avatar?.url ?? null,
       })),
     };
+  };
+
+  // ── /api/users/me/team/activity — per-member, per-day completion counts ─
+  // Powers the GitHub-style activity heatmap. PM-only. Reads the activity-event
+  // log (single source of truth): daily completions accumulate going forward,
+  // challenge completions are also backfilled from historic submissions at boot.
+  plugin.controllers.user.getTeamActivity = async (ctx: any) => {
+    const userId = ctx.state.user?.id;
+    if (!userId) return ctx.unauthorized('not logged in');
+
+    const me: any = await es.findOne('plugin::users-permissions.user', userId, {
+      fields: ['teamRole'],
+      populate: { managedTeam: { fields: ['id', 'name'] } },
+    });
+    if (me?.teamRole !== 'pm') {
+      return ctx.forbidden('only a project manager can view team activity');
+    }
+    if (!me?.managedTeam) return (ctx.body = { from: null, to: null, members: [] });
+
+    const teamId = me.managedTeam.id;
+
+    // Window: the last 53 weeks (371 days), today included.
+    const WINDOW_DAYS = 371;
+    const toStr = dayStr(new Date());
+    const fromStr = dayStr(new Date(Date.now() - (WINDOW_DAYS - 1) * 86_400_000));
+
+    const members: any[] = await es.findMany('plugin::users-permissions.user', {
+      filters: { team: teamId, id: { $ne: userId } },
+      fields: ['id', 'username', 'displayName'],
+      populate: { avatar: { fields: ['url'] } },
+      sort: { xp: 'desc' },
+      limit: 500,
+    });
+
+    const byId = new Map<number, any>();
+    for (const m of members ?? []) {
+      byId.set(m.id, {
+        id: m.id,
+        name: m.displayName || m.username,
+        username: m.username,
+        avatarUrl: m.avatar?.url ?? null,
+        totalChallenges: 0,
+        totalDailies: 0,
+        days: {} as Record<string, { challenges: number; dailies: number }>,
+      });
+    }
+
+    const events: any[] = await es.findMany('api::activity-event.activity-event', {
+      filters: { team: teamId, day: { $gte: fromStr, $lte: toStr } },
+      fields: ['kind', 'day'],
+      populate: { user: { fields: ['id'] } },
+      limit: 100000,
+    });
+    for (const ev of events ?? []) {
+      const rec = byId.get(ev.user?.id);
+      if (!rec) continue;
+      const day = String(ev.day).slice(0, 10);
+      const cell = rec.days[day] ?? (rec.days[day] = { challenges: 0, dailies: 0 });
+      if (ev.kind === 'challenge') { cell.challenges++; rec.totalChallenges++; }
+      else { cell.dailies++; rec.totalDailies++; }
+    }
+
+    ctx.body = { from: fromStr, to: toStr, members: [...byId.values()] };
   };
 
   // ── /api/users/me/team/members/:id — PM removes a member from their team ─
@@ -828,9 +1144,33 @@ export default (plugin: any) => {
       config: { prefix: '', policies: [] },
     },
     {
+      method: 'POST',
+      path: '/users/me/shop/purchase',
+      handler: 'user.purchaseShopItem',
+      config: { prefix: '', policies: [] },
+    },
+    {
+      method: 'GET',
+      path: '/users/me/shop/orders',
+      handler: 'user.listShopOrders',
+      config: { prefix: '', policies: [] },
+    },
+    {
+      method: 'POST',
+      path: '/users/me/shop/orders/:id/deliver',
+      handler: 'user.deliverShopOrder',
+      config: { prefix: '', policies: [] },
+    },
+    {
       method: 'GET',
       path: '/users/me/team',
       handler: 'user.getTeam',
+      config: { prefix: '', policies: [] },
+    },
+    {
+      method: 'GET',
+      path: '/users/me/team/activity',
+      handler: 'user.getTeamActivity',
       config: { prefix: '', policies: [] },
     },
     {

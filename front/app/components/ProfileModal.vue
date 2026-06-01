@@ -5,19 +5,23 @@ import type { UserProfile } from '~/types/user'
 interface Props {
   open: boolean
   originRect?: DOMRect | null
+  profile?: UserProfile | null
 }
 const props = defineProps<Props>()
 const emit = defineEmits<{ (e: 'close'): void }>()
 
 const user = useStrapiUser() as unknown as { value: UserProfile | null }
-const u = computed(() => user.value)
+const currentUser = computed(() => user.value)
+const u = computed(() => props.profile ?? currentUser.value)
 const strapiBase = (useRuntimeConfig().public as any)?.strapi?.url ?? 'http://localhost:1337'
 const token = useStrapiToken()
 const { fetchUser } = useStrapiAuth()
+const isOwnProfile = computed(() => !props.profile || String(props.profile.id) === String(currentUser.value?.id ?? ''))
+const canEditProfile = computed(() => isOwnProfile.value)
 
 const displayName = computed(() => u.value?.displayName || u.value?.username || 'Игрок')
 const username    = computed(() => u.value?.username ?? '—')
-const email       = computed(() => u.value?.email ?? '—')
+const email       = computed(() => u.value?.email || '—')
 const initial     = computed(() => (displayName.value[0] ?? '?').toUpperCase())
 const isPm        = computed(() => u.value?.teamRole === 'pm')
 const roleLabel   = computed(() => (u.value?.teamRole === 'pm' ? 'PM' : 'участник'))
@@ -202,6 +206,11 @@ const loadProfileHeader = () => {
     headerSaveState.value = 'idle'
     return
   }
+  if (!isOwnProfile.value) {
+    profileHeader.value = { ...defaultHeaderSettings }
+    headerSaveState.value = 'idle'
+    return
+  }
   if (!import.meta.client) {
     profileHeader.value = { ...defaultHeaderSettings }
     return
@@ -216,6 +225,7 @@ const loadProfileHeader = () => {
 }
 
 const saveProfileHeader = async () => {
+  if (!isOwnProfile.value) return
   if (headerSaving.value) return
   // Optimistic local cache so the look survives an offline reload too.
   if (import.meta.client) {
@@ -306,144 +316,20 @@ const onHeaderArtPointerUp = (e: PointerEvent) => {
   ;(e.currentTarget as HTMLElement).releasePointerCapture?.(e.pointerId)
 }
 
-interface ShopItem {
-  id: string
-  title: string
-  description: string
-  price: number
-  image: string
-  tag: string
-}
-
-const fallbackShopItems: ShopItem[] = [
-  {
-    id: 'keychain-dino',
-    title: 'Воксельный брелок',
-    description: 'Фирменный мини-динозавр для ключей или рюкзака.',
-    price: 180,
-    image: '/voxel/dino.png',
-    tag: 'мерч',
-  },
-  {
-    id: 'stickerpack',
-    title: 'Стикерпак',
-    description: 'Набор наклеек с иконками Фабрики решений.',
-    price: 120,
-    image: '/voxel/chat.png',
-    tag: 'быстро',
-  },
-  {
-    id: 'mug',
-    title: 'Кружка',
-    description: 'Кружка для кофе, чая и сложных дейли-челленджей.',
-    price: 420,
-    image: '/voxel/mug.png',
-    tag: 'хит',
-  },
-  {
-    id: 'notepad',
-    title: 'Блокнот',
-    description: 'Для идей, схем и планов на следующий спринт.',
-    price: 260,
-    image: '/voxel/notepad.png',
-    tag: 'офис',
-  },
-  {
-    id: 'keycaps',
-    title: 'Кейкапы',
-    description: 'Акцентные клавиши для тех, кто закрыл хард.',
-    price: 650,
-    image: '/voxel/keycaps.png',
-    tag: 'rare',
-  },
-]
-
-const shopItems = ref<ShopItem[]>(fallbackShopItems)
-const purchasedShopIds = ref<Set<string>>(new Set())
-const shopNotice = ref<string | null>(null)
-const shopStorageKey = computed(() => `fr-xp-shop:${u.value?.id ?? u.value?.username ?? 'guest'}`)
-const spentXp = computed(() =>
-  shopItems.value.reduce((sum, item) => (purchasedShopIds.value.has(item.id) ? sum + item.price : sum), 0),
-)
-const shopBalance = computed(() => Math.max(0, xp.value - spentXp.value))
-
-const normalizeShopItem = (row: any): ShopItem | null => {
-  const data = row?.attributes ?? row
-  const title = String(data?.title ?? '').trim()
-  const price = Number(data?.price ?? 0)
-  const image = String(data?.image ?? '').trim()
-  if (!title || !Number.isFinite(price) || price < 0 || !image) return null
-
-  return {
-    id: String(data?.slug ?? row?.documentId ?? row?.id ?? title),
-    title,
-    description: String(data?.description ?? ''),
-    price,
-    image,
-    tag: String(data?.tag ?? 'мерч'),
-  }
-}
-
-const loadShopItems = async () => {
-  try {
-    const res = await $fetch<{ data?: any[] }>(`${strapiBase}/api/shop-items`, {
-      params: {
-        'filters[isActive][$eq]': true,
-        'sort[0]': 'order:asc',
-        'pagination[limit]': 50,
-      },
-    })
-    const items = (res.data ?? []).map(normalizeShopItem).filter(Boolean) as ShopItem[]
-    shopItems.value = items.length ? items : fallbackShopItems
-  } catch {
-    shopItems.value = fallbackShopItems
-  }
-}
-
-const loadShopPurchases = () => {
-  if (!import.meta.client) return
-  try {
-    const raw = window.localStorage.getItem(shopStorageKey.value)
-    const ids = raw ? JSON.parse(raw) : []
-    purchasedShopIds.value = new Set(Array.isArray(ids) ? ids.filter((id) => typeof id === 'string') : [])
-  } catch {
-    purchasedShopIds.value = new Set()
-  }
-}
-
-const saveShopPurchases = () => {
-  if (!import.meta.client) return
-  window.localStorage.setItem(shopStorageKey.value, JSON.stringify([...purchasedShopIds.value]))
-}
-
-const isShopItemBought = (id: string) => purchasedShopIds.value.has(id)
-const canBuyShopItem = (item: ShopItem) => !isShopItemBought(item.id) && shopBalance.value >= item.price
-
-const buyShopItem = (item: ShopItem) => {
-  if (isPm.value || isShopItemBought(item.id)) return
-  if (shopBalance.value < item.price) {
-    shopNotice.value = `Не хватает ${fmt(item.price - shopBalance.value)} XP`
-    return
-  }
-
-  const next = new Set(purchasedShopIds.value)
-  next.add(item.id)
-  purchasedShopIds.value = next
-  saveShopPurchases()
-  shopNotice.value = `${item.title} куплен за ${fmt(item.price)} XP`
-}
-
 // ── avatar upload ──
 const { avatarUrl, upload: uploadAvatar } = useUserAvatar()
 const fileInput = ref<HTMLInputElement | null>(null)
 const avatarUploading = ref(false)
 const avatarError = ref<string | null>(null)
+const viewedAvatarUrl = computed(() => props.profile?.avatar?.url ?? avatarUrl.value)
 
 const pickAvatar = () => {
+  if (!canEditProfile.value) return
   if (avatarUploading.value) return
   fileInput.value?.click()
 }
 const onAvatarChange = async (e: Event) => {
+  if (!canEditProfile.value) return
   const input = e.target as HTMLInputElement
   const file = input.files?.[0]
   input.value = '' // let the user re-pick the same file later
@@ -611,12 +497,9 @@ watch(
   () => props.open,
   async (isOpen) => {
     if (isOpen) {
-      await loadShopItems()
-      loadShopPurchases()
       loadProfileHeader()
       loadCustomizerOpen()
       loadRewardBadges()
-      shopNotice.value = null
       document.addEventListener('keydown', onEsc)
       await nextTick()
       animateIn()
@@ -626,11 +509,8 @@ watch(
   },
 )
 
-watch(shopStorageKey, loadShopPurchases)
-watch(profileHeaderStorageKey, loadProfileHeader)
+watch([profileHeaderStorageKey, () => props.profile], loadProfileHeader)
 onMounted(async () => {
-  await loadShopItems()
-  loadShopPurchases()
   loadProfileHeader()
   loadCustomizerOpen()
   loadRewardBadges()
@@ -691,14 +571,14 @@ defineExpose({ animateOutAndClose })
             <button
               type="button"
               class="pm-avatar"
-              :class="{ 'has-img': !!avatarUrl }"
-              :disabled="avatarUploading"
-              :aria-label="avatarUrl ? 'Сменить аватар' : 'Загрузить аватар'"
+              :class="{ 'has-img': !!viewedAvatarUrl, 'is-readonly': !canEditProfile }"
+              :disabled="avatarUploading || !canEditProfile"
+              :aria-label="canEditProfile ? (viewedAvatarUrl ? 'Сменить аватар' : 'Загрузить аватар') : 'Аватар профиля'"
               @click="pickAvatar"
             >
-              <img v-if="avatarUrl" :src="avatarUrl" alt="" class="pm-avatar-img" />
+              <img v-if="viewedAvatarUrl" :src="viewedAvatarUrl" alt="" class="pm-avatar-img" />
               <span v-else class="font-pix">{{ initial }}</span>
-              <span class="pm-avatar-edit" aria-hidden="true">
+              <span v-if="canEditProfile" class="pm-avatar-edit" aria-hidden="true">
                 <svg v-if="!avatarUploading" viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                   <path d="M12 20h9" />
                   <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" />
@@ -716,7 +596,6 @@ defineExpose({ animateOutAndClose })
           </div>
           <div class="pm-id">
             <div class="pm-name font-pix">{{ displayName }}</div>
-            <div class="pm-sub font-mono">@{{ username }}</div>
             <div v-if="avatarError" class="pm-avatar-err font-mono">{{ avatarError }}</div>
             <div v-else class="pm-team font-mono">{{ teamLine }}</div>
           </div>
@@ -727,7 +606,7 @@ defineExpose({ animateOutAndClose })
         </div>
 
         <!-- HEADER CUSTOMIZER -->
-        <div class="pm-customizer pm-stagger" :class="{ 'is-collapsed': !customizerOpen }" aria-label="Настройка шапки профиля">
+        <div v-if="canEditProfile" class="pm-customizer pm-stagger" :class="{ 'is-collapsed': !customizerOpen }" aria-label="Настройка шапки профиля">
           <button
             type="button"
             class="pm-customizer-toggle font-mono"
@@ -869,51 +748,6 @@ defineExpose({ animateOutAndClose })
           </div>
         </div>
 
-        <!-- XP SHOP -->
-        <div v-if="!isPm" class="pm-shop pm-stagger" aria-label="Магазин за XP">
-          <div class="pm-shop-head">
-            <div>
-              <div class="pm-shop-kicker font-mono">Магазин</div>
-              <div class="pm-shop-title font-pix">Трать XP</div>
-            </div>
-            <div class="pm-shop-balance font-mono" title="Доступно после покупок">
-              <span>{{ fmt(shopBalance) }}</span> XP
-            </div>
-          </div>
-          <div v-if="shopNotice" class="pm-shop-notice font-mono">{{ shopNotice }}</div>
-          <div class="pm-shop-grid">
-            <article
-              v-for="item in shopItems"
-              :key="item.id"
-              class="pm-shop-item"
-              :class="{ 'is-bought': isShopItemBought(item.id) }"
-            >
-              <div class="pm-shop-img-wrap">
-                <img :src="item.image" :alt="item.title" class="pm-shop-img" loading="lazy" />
-              </div>
-              <div class="pm-shop-info">
-                <div class="pm-shop-meta">
-                  <span class="pm-shop-name font-mono">{{ item.title }}</span>
-                  <span class="pm-shop-tag font-mono">{{ item.tag }}</span>
-                </div>
-                <p class="pm-shop-desc font-mono">{{ item.description }}</p>
-                <div class="pm-shop-buy-row">
-                  <span class="pm-shop-price font-pix">{{ fmt(item.price) }} XP</span>
-                  <button
-                    type="button"
-                    class="pm-shop-buy font-mono"
-                    :class="{ 'is-bought': isShopItemBought(item.id) }"
-                    :disabled="isShopItemBought(item.id) || !canBuyShopItem(item)"
-                    @click="buyShopItem(item)"
-                  >
-                    {{ isShopItemBought(item.id) ? 'Куплено' : canBuyShopItem(item) ? 'Купить' : 'Не хватает' }}
-                  </button>
-                </div>
-              </div>
-            </article>
-          </div>
-        </div>
-
         <!-- ACCOUNT -->
         <div class="pm-account pm-stagger">
           <div class="pm-acc-row">
@@ -935,7 +769,7 @@ defineExpose({ animateOutAndClose })
         </div>
 
         <!-- INVITE (PM only) -->
-        <div v-if="isPm" class="pm-invite pm-stagger">
+        <div v-if="isPm && canEditProfile" class="pm-invite pm-stagger">
           <div class="pm-invite-head font-mono">Пригласить участника</div>
           <p class="pm-invite-note font-mono">
             Скопируй ссылку и передай участнику. Она действует 30 минут — кто
@@ -1150,18 +984,25 @@ defineExpose({ animateOutAndClose })
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #fff;
+  color: #11131c;
   font-size: 28px;
   padding: 0;
   border: 0;
   overflow: hidden;
   cursor: pointer;
+  background: #fff;
+  box-shadow: 0 0 0 1px var(--color-line-strong), 0 10px 24px -8px rgba(0,0,0,0.25);
+  transition: transform 200ms cubic-bezier(0.34,1.56,0.64,1);
+}
+/* once an avatar image is set, restore the brand gradient frame behind it */
+.pm-avatar.has-img {
+  color: #fff;
   background: linear-gradient(135deg, var(--color-purple-brand), var(--color-cyan-brand));
   box-shadow: 0 0 0 1px var(--color-line-strong), 0 10px 24px -8px rgba(181,89,243,0.45);
-  transition: transform 200ms cubic-bezier(0.34,1.56,0.64,1);
 }
 .pm-avatar:hover:not(:disabled) { transform: scale(1.04); }
 .pm-avatar:disabled { cursor: progress; }
+.pm-avatar.is-readonly:disabled { cursor: default; }
 .pm-avatar-img {
   width: 100%;
   height: 100%;
@@ -1513,170 +1354,6 @@ defineExpose({ animateOutAndClose })
 .pm-bar-streak { background: var(--color-mint-brand); box-shadow: 0 0 8px rgba(82,242,197,.35); }
 .pm-bar-cup    { background: linear-gradient(90deg, var(--color-purple-brand), #d28bff); box-shadow: 0 0 10px rgba(181,89,243,.35); }
 
-/* XP SHOP */
-.pm-shop {
-  border-top: 1px solid var(--color-line);
-  padding-top: 16px;
-  margin-bottom: 18px;
-}
-.pm-shop-head {
-  display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: 14px;
-  margin-bottom: 12px;
-}
-.pm-shop-kicker {
-  font-size: 9px;
-  letter-spacing: .14em;
-  text-transform: uppercase;
-  color: var(--color-ink-3);
-  margin-bottom: 3px;
-}
-.pm-shop-title {
-  font-size: 20px;
-  line-height: 1;
-  color: var(--color-ink);
-}
-.pm-shop-balance {
-  flex-shrink: 0;
-  padding: 7px 9px;
-  border-radius: 9px;
-  border: 1px solid rgba(24, 239, 242, 0.35);
-  background: rgba(24, 239, 242, 0.08);
-  color: var(--color-cyan-brand);
-  font-size: 10px;
-  letter-spacing: .08em;
-  text-transform: uppercase;
-}
-.pm-shop-balance span {
-  color: var(--color-ink);
-  font-weight: 700;
-}
-.pm-shop-notice {
-  margin-bottom: 10px;
-  padding: 8px 10px;
-  border-radius: 9px;
-  border: 1px solid rgba(82, 242, 197, 0.3);
-  background: rgba(82, 242, 197, 0.08);
-  color: var(--color-mint-brand);
-  font-size: 10px;
-  line-height: 1.35;
-}
-.pm-shop-grid {
-  display: flex;
-  flex-direction: column;
-  gap: 9px;
-}
-.pm-shop-item {
-  display: grid;
-  grid-template-columns: 62px minmax(0, 1fr);
-  gap: 11px;
-  align-items: center;
-  padding: 10px;
-  border: 1px solid var(--color-line);
-  border-radius: 12px;
-  background: var(--color-bg-3);
-  transition: transform 180ms ease, border-color 180ms ease, opacity 180ms ease;
-}
-.pm-shop-item:hover {
-  transform: translateY(-2px);
-  border-color: var(--color-line-strong);
-}
-.pm-shop-item.is-bought {
-  opacity: .78;
-}
-.pm-shop-img-wrap {
-  width: 62px;
-  height: 62px;
-  border-radius: 12px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid var(--color-line);
-  overflow: hidden;
-}
-.pm-shop-img {
-  width: 50px;
-  height: 50px;
-  object-fit: contain;
-  filter: drop-shadow(0 8px 10px rgba(0, 0, 0, 0.35));
-}
-.pm-shop-info {
-  min-width: 0;
-}
-.pm-shop-meta {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  margin-bottom: 5px;
-}
-.pm-shop-name {
-  min-width: 0;
-  color: var(--color-ink);
-  font-size: 11px;
-  letter-spacing: .04em;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.pm-shop-tag {
-  flex-shrink: 0;
-  padding: 3px 6px;
-  border-radius: 999px;
-  background: rgba(181, 89, 243, 0.12);
-  color: var(--color-purple-brand);
-  font-size: 8px;
-  letter-spacing: .12em;
-  text-transform: uppercase;
-}
-.pm-shop-desc {
-  margin: 0 0 9px;
-  color: var(--color-ink-3);
-  font-size: 10px;
-  line-height: 1.35;
-}
-.pm-shop-buy-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-}
-.pm-shop-price {
-  flex-shrink: 0;
-  color: var(--color-cyan-brand);
-  font-size: 15px;
-  line-height: 1;
-}
-.pm-shop-buy {
-  min-width: 88px;
-  padding: 8px 10px;
-  border-radius: 9px;
-  border: 1px solid var(--color-cyan-brand);
-  background: rgba(24, 239, 242, 0.08);
-  color: var(--color-cyan-brand);
-  font-size: 9px;
-  letter-spacing: .08em;
-  text-transform: uppercase;
-  cursor: pointer;
-  transition: background 150ms, border-color 150ms, color 150ms, opacity 150ms;
-}
-.pm-shop-buy:hover:not(:disabled) {
-  background: rgba(24, 239, 242, 0.16);
-}
-.pm-shop-buy:disabled {
-  opacity: .55;
-  cursor: default;
-}
-.pm-shop-buy.is-bought {
-  border-color: var(--color-mint-brand);
-  background: rgba(82, 242, 197, 0.1);
-  color: var(--color-mint-brand);
-  opacity: 1;
-}
-
 /* ACCOUNT */
 .pm-account {
   border-top: 1px solid var(--color-line);
@@ -1761,10 +1438,5 @@ defineExpose({ animateOutAndClose })
   .pm-image-picker { grid-template-columns: repeat(5, 34px); }
   .pm-custom-actions { grid-template-columns: 1fr; }
   .pm-stats { grid-template-columns: repeat(2, minmax(0,1fr)); }
-  .pm-shop-item { grid-template-columns: 54px minmax(0, 1fr); gap: 9px; }
-  .pm-shop-img-wrap { width: 54px; height: 54px; }
-  .pm-shop-img { width: 44px; height: 44px; }
-  .pm-shop-buy-row { align-items: stretch; flex-direction: column; gap: 8px; }
-  .pm-shop-buy { width: 100%; }
 }
 </style>

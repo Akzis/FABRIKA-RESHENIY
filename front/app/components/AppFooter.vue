@@ -56,7 +56,7 @@ const visibleCols = computed(() =>
 
 <template>
   <footer class="border-t border-line pt-15 pb-10 mt-15">
-    <div class="max-w-[1320px] mx-auto px-8">
+    <div class="max-w-[1320px] mx-auto px-4 sm:px-8">
       <div class="grid grid-cols-1 md:grid-cols-[1.5fr_1fr_1fr_1fr] gap-10 mb-12">
         <div>
           <BrandLogo light="/voxel/logo.png" dark="/voxel/logowhite.png" img-class="logo-mark h-[30px] [image-rendering:pixelated] mb-4" />

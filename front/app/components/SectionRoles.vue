@@ -20,8 +20,8 @@ useReveal('.role-card', { stagger: 0.18, y: 60, scale: 0.96, duration: 1.0 })
 </script>
 
 <template>
-  <section id="roles" class="py-[110px] relative">
-    <div class="max-w-[1320px] mx-auto px-8">
+  <section id="roles" class="py-16 sm:py-[110px] relative">
+    <div class="max-w-[1320px] mx-auto px-4 sm:px-8">
       <SectionHeader tag="Многопользовательский режим" tag-color="var(--color-purple-brand)" sub="Платформа поддерживает раздельные роли. Каждая видит свой интерфейс, свои метрики и свои возможности.">
         <template #title>
           Два <span class="text-purple-brand">режима</span><br />работы
@@ -32,7 +32,7 @@ useReveal('.role-card', { stagger: 0.18, y: 60, scale: 0.96, duration: 1.0 })
         <div
           v-for="r in roles"
           :key="r.key"
-          :class="['role-card relative overflow-hidden bg-bg-2 border rounded-[22px] p-9', roleCls[r.key].border]"
+          :class="['role-card relative overflow-hidden bg-bg-2 border rounded-[22px] p-6 sm:p-9', roleCls[r.key].border]"
         >
           <img :src="r.image" alt="" class="absolute -right-2.5 -top-2.5 w-[180px] opacity-85 drop-shadow-[0_18px_30px_rgba(0,0,0,0.5)]" />
           <span :class="['relative font-mono text-[11px] tracking-[0.14em] uppercase py-1.5 px-3 border rounded-full inline-block', roleCls[r.key].tag]">

@@ -73,14 +73,111 @@ export const seedBadges = [
   { order: 5, code: 'first-hard', label: 'Снайпер', accent: 'purple', conditionType: 'first_hard_challenge', conditionValue: 0, xpReward: 500, rewardImage: '/voxel/mug.png' },
 ]
 
-// Daily quests are global templates. Per-user "done" comes from
-// User.completedDailyQuests relation — there's no `done` flag on the quest.
-export const seedDaily = [
-  { order: 1, title: 'Закрой 1 LIGHT-челлендж', points: 50, description: 'Выбери любой челлендж уровня LIGHT и доведи его до сдачи. Лёгкая задача на 15–60 минут, чтобы поддержать дейли-серию и быстро забрать опыт.' },
-  { order: 2, title: 'Оставь ревью коллеге', points: 30, description: 'Зайди в работу любого участника команды и оставь содержательный комментарий: что хорошо, что можно улучшить. Ревью помогает команде расти, а тебе — очки.' },
-  { order: 3, title: 'Возьми в работу MEDIUM', points: 150, description: 'Закрепи за собой челлендж уровня MEDIUM. Не обязательно сдавать сегодня — достаточно взять задачу в работу и начать.' },
-  { order: 4, title: 'Прокачай свой профиль', points: 20, description: 'Загрузи аватар, проверь команду и роль. Заполненный профиль виден в рейтинге и команде.' },
+// Daily quests rotate per calendar day: each day shows a fresh set drawn from
+// this pool, and `index.ts` materialises dated rows several days ahead (see
+// dailyQuestsForDate + ensureDailyQuestsAhead). Per-user "done" comes from the
+// User.completedDailyQuests relation — each day has its own quest rows (unique
+// ids), so completing today's set never marks tomorrow's done.
+//
+// Two kinds, both genuinely doable every day (unlike "close a HARD challenge",
+// which realistically happens ~once a month):
+//   • action — honor-based: press to confirm you did the thing.
+//   • quiz   — multiple-choice question; the chosen answer is validated
+//              server-side (completeTask) so points can't be claimed by guessing
+//              in the network tab. `correctAnswer` is the 0-based index into
+//              `options` and is stripped from the public API (see the
+//              daily-quest controller).
+export interface DailyQuestTemplate {
+  kind: 'action' | 'quiz'
+  title: string
+  points: number
+  description?: string
+  options?: string[]
+  correctAnswer?: number
+}
+
+const q = (
+  title: string,
+  options: string[],
+  correctAnswer: number,
+  points = 30,
+  description?: string,
+): DailyQuestTemplate => ({ kind: 'quiz', title, options, correctAnswer, points, description })
+
+export const dailyQuestPool: DailyQuestTemplate[] = [
+  // ── action (honor-based) ──────────────────────────────────────────────
+  { kind: 'action', title: 'Отметься на платформе', points: 15, description: 'Просто загляни сегодня: проверь свой XP, серию и место в рейтинге. Ежедневный заход держит серию живой.' },
+  { kind: 'action', title: 'Оставь ревью коллеге', points: 30, description: 'Зайди в работу любого участника команды и оставь содержательный комментарий: что хорошо, что можно улучшить. Ревью помогает команде расти, а тебе — очки.' },
+  { kind: 'action', title: 'Обнови статус по своей задаче', points: 20, description: 'Зайди в активный челлендж и отметь прогресс комментарием — что сделано, что осталось. Команда видит, что задача в работе.' },
+  { kind: 'action', title: 'Прокачай свой профиль', points: 20, description: 'Загрузи аватар, проверь команду и роль. Заполненный профиль виден в рейтинге и команде.' },
+  { kind: 'action', title: 'Помоги коллеге с задачей', points: 40, description: 'Подключись к чужому челленджу: подскажи решение, скинь полезную ссылку или разбери баг вместе. Командная работа в зачёт.' },
+  { kind: 'action', title: 'Запланируй день', points: 15, description: 'Открой доску, выбери, чем займёшься сегодня, и наметь 1–3 главные задачи. Маленький ритуал, который держит фокус.' },
+
+  // ── quiz (multiple-choice, validated server-side) ─────────────────────
+  q('Что означает аббревиатура «MVP» в продуктовой разработке?',
+    ['Minimum Viable Product', 'Most Valuable Player', 'Multi-Version Platform', 'Managed Virtual Product'], 0, 30,
+    'MVP — минимально жизнеспособный продукт: самая простая версия, которую уже можно показать пользователям и проверить гипотезу.'),
+  q('Какая команда Git создаёт новую ветку и сразу переключается на неё?',
+    ['git branch -d', 'git checkout -b', 'git merge', 'git clone'], 1, 30,
+    '`git checkout -b имя` (или `git switch -c имя`) создаёт ветку и переключается на неё одной командой.'),
+  q('Что делает HTTP-статус 404?',
+    ['Сервер упал', 'Доступ запрещён', 'Ресурс не найден', 'Запрос успешен'], 2, 25,
+    '404 Not Found — сервер не нашёл запрошенный ресурс по этому адресу.'),
+  q('Что такое «code review»?',
+    ['Автотесты кода', 'Проверка кода коллегами перед слиянием', 'Рефакторинг', 'Деплой на прод'], 1, 25,
+    'Code review — проверка изменений другими разработчиками перед вливанием в основную ветку. Ловит баги и делится знаниями.'),
+  q('Какой принцип скрывается за буквой «S» в SOLID?',
+    ['Single Responsibility', 'Static Resources', 'Secure Routing', 'Simple Reuse'], 0, 35,
+    'S — Single Responsibility: у каждого модуля/класса должна быть одна причина для изменения.'),
+  q('Что описывает «API»?',
+    ['Язык программирования', 'Интерфейс взаимодействия между программами', 'Тип базы данных', 'Среду разработки'], 1, 25,
+    'API (Application Programming Interface) — набор правил, по которым одна программа обращается к другой.'),
+  q('Что такое «рефакторинг»?',
+    ['Добавление новых фич', 'Улучшение структуры кода без смены поведения', 'Исправление багов', 'Написание тестов'], 1, 30,
+    'Рефакторинг — улучшение внутренней структуры кода без изменения его внешнего поведения.'),
+  q('Какой метод HTTP обычно используют, чтобы создать новый ресурс?',
+    ['GET', 'DELETE', 'POST', 'HEAD'], 2, 25,
+    'POST отправляет данные на сервер и, как правило, создаёт новый ресурс.'),
+  q('Что такое «git merge conflict»?',
+    ['Ошибка сети', 'Git не может автоматически объединить изменения', 'Повреждённый репозиторий', 'Дубликат коммита'], 1, 35,
+    'Конфликт слияния возникает, когда две ветки меняют одни и те же строки и Git не знает, какую версию оставить — нужно решить вручную.'),
+  q('Что значит «деплой»?',
+    ['Удаление кода', 'Выкладка приложения в рабочую среду', 'Написание документации', 'Откат изменений'], 1, 25,
+    'Деплой (deploy) — выкладывание новой версии приложения в окружение, где им пользуются (обычно прод).'),
 ]
+
+// Back-compat alias: a small "default" set, still used as the front-end fallback
+// when the CMS is unreachable.
+export const seedDaily = dailyQuestPool.slice(0, 4).map((quest, i) => ({ order: i + 1, ...quest }))
+
+// Whole days since the Unix epoch for a given date, in UTC. Matches the
+// streak bookkeeping in extensions/users-permissions/strapi-server.ts, which
+// also keys days off the UTC calendar (toISOString().slice(0, 10)).
+const epochDayUTC = (d: Date) =>
+  Math.floor(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()) / 86_400_000)
+
+const dailyActions = dailyQuestPool.filter((p) => p.kind === 'action')
+const dailyQuizzes = dailyQuestPool.filter((p) => p.kind === 'quiz')
+
+// Deterministic per-day daily set. Every day is guaranteed to contain quizzes:
+// the set is built as 1 honor-based action + (perDay-1) multiple-choice quizzes,
+// each picked from a window that slides one step per calendar day (wrapping
+// around). Same date → same set on every server, so re-running the filler is
+// idempotent. `mod` keeps the index positive even for pre-epoch dates.
+export function dailyQuestsForDate(date: Date, perDay = 4) {
+  const day = epochDayUTC(date)
+  const mod = (n: number, m: number) => ((n % m) + m) % m
+  const quizCount = Math.min(perDay - 1, dailyQuizzes.length)
+
+  const picks: DailyQuestTemplate[] = []
+  if (dailyActions.length) picks.push(dailyActions[mod(day, dailyActions.length)])
+  const qStart = mod(day * quizCount, dailyQuizzes.length)
+  for (let i = 0; i < quizCount; i++) {
+    picks.push(dailyQuizzes[mod(qStart + i, dailyQuizzes.length)])
+  }
+
+  return picks.map((quest, i) => ({ order: i + 1, ...quest }))
+}
 
 // Challenges the participant can complete. Level drives the filter tabs in
 // the "Задания" section; xp is awarded on completion.

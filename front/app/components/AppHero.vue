@@ -16,6 +16,20 @@ const u = computed(() => user.value)
 
 const isPm = computed(() => u.value?.teamRole === 'pm')
 
+// Latest activity (daily / challenge / achievement) shown in the scene card.
+const { lastEvent } = useNotifications()
+const accentVarOf: Record<string, string> = {
+  mint: 'var(--color-mint-brand)',
+  cyan: 'var(--color-cyan-brand)',
+  purple: 'var(--color-purple-brand)',
+}
+const accentTextOf: Record<string, string> = {
+  mint: 'text-mint-brand',
+  cyan: 'text-cyan-brand',
+  purple: 'text-purple-brand',
+}
+const sceneAccent = computed(() => accentVarOf[lastEvent.value?.accent ?? 'mint'])
+
 const MAX_LEVEL = 25
 
 const fmt = (n: number) => n.toLocaleString('ru-RU').replace(/,/g, ' ')
@@ -41,20 +55,20 @@ useBarFill('.hero-scene-bar', { duration: 1.6 })
 </script>
 
 <template>
-  <section class="relative pt-[90px] pb-[60px] overflow-hidden [perspective:1200px]">
+  <section class="relative pt-5 pb-10 sm:pt-[30px] sm:pb-[60px] overflow-hidden [perspective:1200px]">
     <div class="absolute inset-0 dotted-grid-bg pointer-events-none"></div>
 
-    <div class="relative z-[2] max-w-[1320px] mx-auto px-8 grid lg:grid-cols-[1.05fr_1fr] gap-15 items-center">
+    <div class="relative z-[2] max-w-[1320px] mx-auto px-4 sm:px-8 grid lg:grid-cols-[1.05fr_1fr] gap-10 lg:gap-15 items-center">
       <div>
   
 
-        <h1 class="font-pix font-bold text-[clamp(56px,7vw,104px)] leading-[0.92] tracking-[-0.01em] my-[22px_0_28px] uppercase">
+        <h1 class="font-pix font-bold text-[clamp(40px,9vw,104px)] leading-[0.95] sm:leading-[0.92] tracking-[-0.01em] my-[22px_0_28px] uppercase">
           <span class="hero-title-line block">Качай <span class="text-cyan-brand">скилл</span>.</span>
           <span class="hero-title-line block">Бери <span class="text-mint-brand">челлендж</span>.</span>
           <span class="hero-title-line block">Получай <span class="text-purple-brand">награду</span>.</span>
         </h1>
 
-        <p class="hero-lede text-[18px] leading-[1.55] text-ink-2 max-w-[520px] mt-6 mb-9">
+        <p class="hero-lede text-[16px] sm:text-[18px] leading-[1.55] text-ink-2 max-w-[520px] mt-6 mb-9">
           Превращаем рабочие задачи в игру с уровнями LIGHT, MEDIUM и HARD. Команды выполняют челленджи, копят баллы
           и поднимаются по рейтингу — а вы видите прогресс в реальном времени.
         </p>
@@ -82,9 +96,9 @@ useBarFill('.hero-scene-bar', { duration: 1.6 })
           </template>
         </div>
 
-        <div class="flex gap-8 mt-14 pt-8 border-t border-line">
+        <div class="flex gap-6 sm:gap-8 mt-10 sm:mt-14 pt-7 sm:pt-8 border-t border-line">
           <div v-for="(s, i) in heroStats" :key="i" class="hero-stat">
-            <div class="font-pix text-[36px] leading-none" :style="{ color: accentMap[s.accent ?? 'cyan'] ?? 'white' }">
+            <div class="font-pix text-[28px] sm:text-[36px] leading-none" :style="{ color: accentMap[s.accent ?? 'cyan'] ?? 'white' }">
               {{ s.value }}
             </div>
             <div class="font-mono text-[11px] tracking-[0.12em] text-ink-3 mt-2 uppercase">{{ s.label }}</div>
@@ -92,15 +106,21 @@ useBarFill('.hero-scene-bar', { duration: 1.6 })
         </div>
       </div>
 
-      <div class="relative h-[600px]">
+      <div class="relative h-[360px] sm:h-[480px] lg:h-[600px] scale-[0.78] sm:scale-90 lg:scale-100 origin-center">
         <div class="absolute inset-0 deco-grid-bg"></div>
         <div class="scene-blob absolute rounded-full blur-[80px] opacity-45 w-[360px] h-[360px] bg-cyan-brand top-[10%] right-[-10%]"></div>
         <div class="scene-blob absolute rounded-full blur-[80px] opacity-35 w-[320px] h-[320px] bg-purple-brand bottom-[10%] left-[-5%]"></div>
 
         <div v-if="!isPm" class="scene-card absolute left-[30px] top-[30px] z-[3] border border-line-strong rounded-xl py-3.5 px-4 backdrop-blur-md flex items-center gap-3" style="background: var(--color-panel-bg)">
-          <span class="w-2.5 h-2.5 bg-mint-brand rounded-full shadow-[0_0_12px_var(--color-mint-brand)]"></span>
+          <span class="w-2.5 h-2.5 rounded-full" :style="{ background: sceneAccent, boxShadow: `0 0 12px ${sceneAccent}` }"></span>
           <span class="font-mono text-[12px] tracking-[0.06em] text-ink-2">
-            <b class="text-mint-brand font-semibold">+250 XP</b> · челлендж выполнен
+            <template v-if="lastEvent">
+              <b v-if="lastEvent.xp != null" :class="accentTextOf[lastEvent.accent]" class="font-semibold">+{{ lastEvent.xp }} XP</b>
+              <template v-if="lastEvent.xp != null"> · </template>{{ lastEvent.text }}
+            </template>
+            <template v-else>
+              <b class="text-mint-brand font-semibold">Выполни задание</b> · получи XP
+            </template>
           </span>
         </div>
 

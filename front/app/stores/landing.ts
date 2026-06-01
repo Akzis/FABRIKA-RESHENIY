@@ -8,6 +8,7 @@ import type {
   HowStep,
   LeaderboardRow,
   RoleCard,
+  TeamLeaderboardRow,
 } from '~/types/landing'
 
 interface LandingState {
@@ -18,6 +19,7 @@ interface LandingState {
   badges: Badge[]
   daily: DailyQuest[]
   leaderboard: LeaderboardRow[]
+  teamLeaderboard: TeamLeaderboardRow[]
   roles: RoleCard[]
   loaded: boolean
   source: 'cms' | 'defaults'
@@ -37,6 +39,7 @@ export const useLandingStore = defineStore('landing', {
     badges: [],
     daily: [],
     leaderboard: [],
+    teamLeaderboard: [],
     roles: [],
     loaded: false,
     source: 'defaults',

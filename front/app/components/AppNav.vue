@@ -7,6 +7,7 @@ const { logout } = useStrapiAuth()
 const allLinks = [
   { href: '#how', label: 'Как это работает' },
   { href: '#tasks', label: 'Задания' },
+  { href: '#shop', label: 'Магазин' },
   { href: '#leaderboard', label: 'Рейтинг' },
   { href: '#roles', label: 'Команды' },
 ]
@@ -15,12 +16,12 @@ const allLinks = [
 // quick-nav must not link to anchors that no longer render on the page.
 const isPm = computed(() => (user.value as any)?.teamRole === 'pm')
 const hasTeam = computed(() => !!(user.value as any)?.team)
-const pmHidden = new Set(['#how', '#tasks'])
+const pmHidden = new Set(['#how', '#tasks', '#shop'])
 const links = computed(() => {
   let ls = isPm.value ? allLinks.filter(l => !pmHidden.has(l.href)) : allLinks
   // PMs get "Команда" + "Проверка" entries for their management views.
   if (isPm.value && hasTeam.value) {
-    ls = [{ href: '#team', label: 'Команда' }, { href: '#review', label: 'Проверка' }, ...ls]
+    ls = [{ href: '#team', label: 'Команда' }, { href: '#review', label: 'Проверка' }, { href: '#deliveries', label: 'Доставки' }, ...ls]
   }
   // Tasks section is hidden for participants without a team.
   if (!isPm.value && !hasTeam.value) ls = ls.filter(l => l.href !== '#tasks')
@@ -61,7 +62,7 @@ const closeProfile = () => {
 
 <template>
   <nav class="sticky top-0 z-50 backdrop-blur-md border-b border-line" style="background: var(--color-nav-bg)">
-    <div class="max-w-[1320px] mx-auto px-8 flex items-center justify-between h-[72px] gap-8">
+    <div class="max-w-[1320px] mx-auto px-4 sm:px-8 flex items-center justify-between h-[64px] sm:h-[72px] gap-3 sm:gap-8">
       <a href="#" class="flex items-center gap-3">
         <BrandLogo light="/voxel/logo.png" dark="/voxel/logowhite.png" img-class="logo-mark h-7 [image-rendering:pixelated]" />
         <span class="hidden xl:inline font-mono text-[11px] tracking-[0.08em] uppercase text-ink-3 border-l border-line-strong pl-3 whitespace-nowrap">
@@ -94,7 +95,7 @@ const closeProfile = () => {
           :aria-label="`Открыть профиль ${displayName}`"
           @click="openProfile"
         >
-          <div class="profile-avatar w-9 h-9 rounded-[10px] overflow-hidden flex items-center justify-center font-pix text-white text-base" style="background: linear-gradient(135deg, var(--color-purple-brand), var(--color-cyan-brand))">
+          <div class="profile-avatar w-9 h-9 rounded-[10px] overflow-hidden flex items-center justify-center font-pix text-base" :class="avatarUrl ? 'text-white' : 'bg-white text-[#11131c]'" :style="avatarUrl ? 'background: linear-gradient(135deg, var(--color-purple-brand), var(--color-cyan-brand))' : undefined">
             <img v-if="avatarUrl" :src="avatarUrl" alt="" class="w-full h-full object-cover" />
             <template v-else>{{ initial }}</template>
           </div>

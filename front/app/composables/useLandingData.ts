@@ -72,10 +72,10 @@ export const landingDefaults = {
   ] as Badge[],
 
   daily: [
-    { title: 'Закрой 1 LIGHT-челлендж', points: 50, description: 'Выбери любой челлендж уровня LIGHT и доведи его до сдачи. Лёгкая задача на 15–60 минут, чтобы поддержать дейли-серию и быстро забрать опыт.' },
-    { title: 'Оставь ревью коллеге', points: 30, description: 'Зайди в работу любого участника команды и оставь содержательный комментарий: что хорошо, что можно улучшить. Ревью помогает команде расти, а тебе — очки.' },
-    { title: 'Возьми в работу MEDIUM', points: 150, description: 'Закрепи за собой челлендж уровня MEDIUM. Не обязательно сдавать сегодня — достаточно взять задачу в работу и начать.' },
-    { title: 'Прокачай свой профиль', points: 20, description: 'Загрузи аватар, проверь команду и роль. Заполненный профиль виден в рейтинге и команде.' },
+    { kind: 'action', title: 'Отметься на платформе', points: 15, description: 'Просто загляни сегодня: проверь свой XP, серию и место в рейтинге. Ежедневный заход держит серию живой.' },
+    { kind: 'action', title: 'Оставь ревью коллеге', points: 30, description: 'Зайди в работу любого участника команды и оставь содержательный комментарий: что хорошо, что можно улучшить. Ревью помогает команде расти, а тебе — очки.' },
+    { kind: 'quiz', title: 'Что означает аббревиатура «MVP» в продуктовой разработке?', points: 30, options: ['Minimum Viable Product', 'Most Valuable Player', 'Multi-Version Platform', 'Managed Virtual Product'], description: 'MVP — минимально жизнеспособный продукт: самая простая версия, которую уже можно показать пользователям и проверить гипотезу.' },
+    { kind: 'action', title: 'Прокачай свой профиль', points: 20, description: 'Загрузи аватар, проверь команду и роль. Заполненный профиль виден в рейтинге и команде.' },
   ] as DailyQuest[],
 
   challenges: [
@@ -136,6 +136,7 @@ export const useLandingData = () => {
     badges:       computed(() => store.badges.length       ? store.badges       : landingDefaults.badges),
     daily:        computed(() => store.daily.length        ? store.daily        : landingDefaults.daily),
     leaderboard:  computed(() => store.leaderboard.length  ? store.leaderboard  : landingDefaults.leaderboard),
+    teamLeaderboard: computed(() => store.teamLeaderboard),
     roles:        computed(() => store.roles.length        ? store.roles        : landingDefaults.roles),
     source:       computed(() => store.source),
     loaded:       computed(() => store.loaded),
@@ -226,7 +227,11 @@ export const useStrapiLanding = async () => {
         'filters[teamRole][$eq]': 'member',
         'fields[0]': 'id',
         'fields[1]': 'challengesClosed',
-        'populate[team][fields][0]': 'id',
+        // xp drives the per-team total in the team leaderboard
+        'fields[2]': 'xp',
+        // team name is needed to group members into teams (the custom users
+        // controller flattens the relation to `{ name }`, no id)
+        'populate[team][fields][0]': 'name',
         'pagination[limit]': -1,
       },
       headers: token ? { Authorization: `Bearer ${token}` } : {},
@@ -245,7 +250,12 @@ export const useStrapiLanding = async () => {
     safe(() => fetchMany('challenge-levels', { 'populate[0]': 'rows', 'populate[1]': 'image', 'sort[0]': 'order:asc' })),
     safe(fetchChallenges),
     safe(() => fetchMany('badges', { 'populate[0]': 'image', 'sort[0]': 'order:asc' })),
-    safe(() => find<Many<any>>('daily-quests', { sort: 'order:asc' })),
+    // Only today's rotating daily set. The date is the UTC calendar day, matching
+    // how the CMS materialises dated quests (see ensureDailyQuestsForDate in cms).
+    safe(() => find<Many<any>>('daily-quests', {
+      filters: { date: { $eq: new Date().toISOString().slice(0, 10) } },
+      sort: 'order:asc',
+    })),
     safe(fetchTopMembers),
     safe(() => fetchMany('role-cards', { 'populate[0]': 'image', 'sort[0]': 'order:asc' })),
     safe(fetchTeamsTotal),
@@ -275,6 +285,43 @@ export const useStrapiLanding = async () => {
       { value: fmtNum(participants), label: 'участников в командах', accent: 'cyan' },
       { value: fmtNum(challengesClosed), label: 'челленджей закрыто', accent: 'mint' },
     ]
+  }
+
+  // Team leaderboard — aggregate member XP and closed challenges per team.
+  // PMs are already excluded (members come from teamRole=member), so a team's
+  // total reflects only its participants, matching the player leaderboard.
+  if (members.length) {
+    const palette = [
+      'linear-gradient(135deg, #18EFF2, #52F2C5)',
+      'linear-gradient(135deg, #B559F3, #18EFF2)',
+      'linear-gradient(135deg, #52F2C5, #18EFF2)',
+      'linear-gradient(135deg, #ff7a7a, #B559F3)',
+      'linear-gradient(135deg, #52F2C5, #7bff7a)',
+      'linear-gradient(135deg, #18EFF2, #B559F3)',
+    ]
+    const byTeam = new Map<string, { members: number; xp: number; closed: number }>()
+    for (const m of members) {
+      const name = m.team?.name as string
+      const agg = byTeam.get(name) ?? { members: 0, xp: 0, closed: 0 }
+      agg.members += 1
+      agg.xp += Number(m.xp ?? 0)
+      agg.closed += Number(m.challengesClosed ?? 0)
+      byTeam.set(name, agg)
+    }
+    out.teamLeaderboard = [...byTeam.entries()]
+      .map(([name, agg], idx) => ({
+        rank: 0,
+        name,
+        members: agg.members,
+        xpValue: agg.xp,
+        closedValue: agg.closed,
+        xp: fmtNum(agg.xp),
+        initial: (name[0] ?? '?').toUpperCase(),
+        gradient: palette[idx % palette.length],
+      }))
+      // Default ordering by XP; SectionLeaderboard re-ranks per active sort.
+      .sort((a, b) => b.xpValue - a.xpValue)
+      .map((t, i) => ({ ...t, rank: i + 1 }))
   }
 
   if (steps?.data?.length) {
@@ -318,6 +365,8 @@ export const useStrapiLanding = async () => {
   if (daily?.data?.length) {
     out.daily = daily.data.map((q: any) => ({
       id: q.id, title: q.title, description: q.description, points: q.points,
+      kind: q.kind === 'quiz' ? 'quiz' : 'action',
+      options: Array.isArray(q.options) ? q.options.map((o: any) => String(o)) : undefined,
     }))
   }
 

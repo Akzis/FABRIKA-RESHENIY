@@ -12,7 +12,7 @@ const handleLogout = async () => {
 <template>
   <div class="min-h-screen flex flex-col">
     <header class="border-b border-line" style="background: var(--color-nav-bg)">
-      <div class="max-w-[1320px] mx-auto px-8 flex items-center justify-between h-[72px]">
+      <div class="max-w-[1320px] mx-auto px-4 sm:px-8 flex items-center justify-between h-[72px]">
         <div class="flex items-center gap-3">
           <BrandLogo light="/voxel/logo.png" dark="/voxel/logowhite.png" img-class="logo-mark h-7 [image-rendering:pixelated]" />
           <span class="hidden md:inline font-mono text-[11px] tracking-[0.08em] uppercase text-ink-3 border-l border-line-strong pl-3 whitespace-nowrap">
@@ -38,7 +38,7 @@ const handleLogout = async () => {
       <div class="scene-blob absolute rounded-full blur-[120px] opacity-25 w-[460px] h-[460px] bg-purple-brand -top-20 -right-20 pointer-events-none"></div>
       <div class="scene-blob absolute rounded-full blur-[120px] opacity-20 w-[420px] h-[420px] bg-cyan-brand -bottom-32 -left-20 pointer-events-none"></div>
 
-      <div class="relative w-full max-w-[520px] bg-bg-2 border border-line-strong rounded-[22px] p-10 shadow-[0_30px_80px_rgba(0,0,0,0.4)] text-center">
+      <div class="relative w-full max-w-[520px] bg-bg-2 border border-line-strong rounded-[22px] p-6 sm:p-10 shadow-[0_30px_80px_rgba(0,0,0,0.4)] text-center">
         <div class="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-[rgba(181,89,243,0.12)] border border-[rgba(181,89,243,0.3)] mb-6">
           <span class="text-3xl">⏳</span>
         </div>

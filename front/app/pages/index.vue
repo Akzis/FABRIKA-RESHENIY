@@ -59,9 +59,11 @@ onMounted(() => {
     <AppHero />
     <SectionTeamRoster v-if="isPm && !!user.team" />
     <SectionSubmissionsReview v-if="isPm && !!user.team" />
+    <SectionDeliveries v-if="isPm && !!user.team" />
     <SectionHowItWorks v-if="!isPm" />
     <SectionTasks v-if="!isPm && !!user.team" />
     <SectionAchievements v-if="!isPm" />
+    <SectionShop v-if="!isPm" />
     <SectionLeaderboard />
     <SectionRoles />
     <SectionFinalCta v-if="!isPm" />

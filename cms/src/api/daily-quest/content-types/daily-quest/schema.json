@@ -12,6 +12,15 @@
     "order": { "type": "integer", "default": 1 },
     "title": { "type": "string", "required": true },
     "description": { "type": "text" },
-    "points": { "type": "integer", "required": true, "default": 50 }
+    "points": { "type": "integer", "required": true, "default": 50 },
+    "date": { "type": "date" },
+    "kind": {
+      "type": "enumeration",
+      "enum": ["action", "quiz"],
+      "default": "action",
+      "required": true
+    },
+    "options": { "type": "json" },
+    "correctAnswer": { "type": "integer" }
   }
 }

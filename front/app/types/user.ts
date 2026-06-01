@@ -8,6 +8,8 @@ export interface UserProfile {
   team?: string | null
   teamRole?: 'member' | 'pm' | null
   xp?: number | null
+  /** XP spent in the shop. Balance available to spend = xp − spentXp. */
+  spentXp?: number | null
   level?: number | null
   xpToNextLevel?: number | null
   streak?: number | null
