@@ -110,7 +110,14 @@ html, body {
   transition: background-color 0.25s ease, color 0.25s ease;
 }
 
-body { overflow-x: hidden; }
+/* Clamp the horizontal viewport so nothing can scroll/expand sideways on
+   mobile. Must be on <html> (not just body) — viewport overflow propagates
+   from the document element, so body-only overflow-x leaves position:fixed
+   elements anchored to a too-wide viewport. */
+html, body {
+  overflow-x: clip;
+  max-width: 100%;
+}
 a { color: inherit; text-decoration: none; }
 
 @keyframes pulseSoft { 0%, 100% { opacity: 1 } 50% { opacity: 0.35 } }

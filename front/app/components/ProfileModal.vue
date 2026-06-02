@@ -1428,8 +1428,17 @@ defineExpose({ animateOutAndClose })
 }
 
 /* mobile */
-@media (max-width: 480px) {
-  .pm-card { right: 8px; left: 8px; width: auto; }
+@media (max-width: 640px) {
+  .pm-card {
+    /* Anchor to the LEFT and size by viewport width so the card can never be
+       pushed past the right screen edge (right-anchoring breaks when an
+       ancestor or page overflow shifts the containing block on mobile). */
+    left: 8px;
+    right: auto;
+    width: calc(100vw - 16px);
+    max-width: calc(100vw - 16px);
+    max-height: calc(100dvh - 88px);
+  }
   .pm-header { grid-template-columns: 56px 1fr auto; gap: 10px; padding-right: 36px; }
   .pm-avatar-wrap,
   .pm-avatar { width: 56px; height: 56px; }
